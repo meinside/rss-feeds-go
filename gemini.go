@@ -67,14 +67,17 @@ func (c *Client) generate(ctx context.Context, prompt string) (generated string,
 	if result, err = model.GenerateContent(ctx, genai.Text(prompt)); err == nil {
 		if len(result.Candidates) > 0 {
 			candidate := result.Candidates[0]
-			content := candidate.Content
 
-			for _, part := range content.Parts {
-				if text, ok := part.(genai.Text); ok { // (text)
-					generated += string(text)
-				} else {
-					err = fmt.Errorf("unsupported type of part from generation: %s", Prettify(part))
+			if content := candidate.Content; content != nil {
+				for _, part := range content.Parts {
+					if text, ok := part.(genai.Text); ok { // (text)
+						generated += string(text)
+					} else {
+						err = fmt.Errorf("unsupported type of part from generation: %s", Prettify(part))
+					}
 				}
+			} else {
+				err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
 			}
 		}
 	}
