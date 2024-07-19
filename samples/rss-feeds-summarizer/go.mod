@@ -2,9 +2,7 @@ module rss-feeds-summarizer
 
 go 1.22.5
 
-replace github.com/meinside/rss-feeds-go => ../../
-
-require github.com/meinside/rss-feeds-go v0.0.0-00010101000000-000000000000
+require github.com/meinside/rss-feeds-go v0.0.1
 
 require (
 	cloud.google.com/go v0.115.0 // indirect

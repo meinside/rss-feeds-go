@@ -73,7 +73,7 @@ func (c *Client) generate(ctx context.Context, prompt string) (generated string,
 				if text, ok := part.(genai.Text); ok { // (text)
 					generated += string(text)
 				} else {
-					err = fmt.Errorf("unsupported type of part from generation: %s", prettify(part))
+					err = fmt.Errorf("unsupported type of part from generation: %s", Prettify(part))
 				}
 			}
 		}
