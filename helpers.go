@@ -24,8 +24,8 @@ const (
 	fetchURLTimeoutSeconds = 10 // 10 seconds
 )
 
-// standardize given JSON (JWCC) bytes
-func standardizeJSON(b []byte) ([]byte, error) {
+// StandardizeJSON standardizes given JSON (JWCC) bytes.
+func StandardizeJSON(b []byte) ([]byte, error) {
 	ast, err := hujson.Parse(b)
 	if err != nil {
 		return b, err
@@ -43,12 +43,6 @@ func errorString(err error) (error string) {
 	} else {
 		return err.Error()
 	}
-}
-
-// strip trailing charset text from given mime type
-func stripCharsetFromMimeType(mimeType string) string {
-	splitted := strings.Split(mimeType, ";")
-	return splitted[0]
 }
 
 // fetch the content from given url and convert it to text for prompting.
@@ -161,8 +155,8 @@ func supportedHTTPContentType(contentType string) bool {
 	}(contentType)
 }
 
-// prettify given thing in JSON format
-func prettify(v any) string {
+// Prettify prettifies given thing in JSON format.
+func Prettify(v any) string {
 	if bytes, err := json.MarshalIndent(v, "", "  "); err == nil {
 		return string(bytes)
 	}
