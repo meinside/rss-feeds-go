@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // FeedsItemsCache is an interface of feeds items' cache
@@ -28,7 +29,7 @@ type CachedItem struct {
 
 	Title       string
 	Link        string
-	GUID        string `gorm:"index"`
+	GUID        string `gorm:"uniqueIndex"`
 	Author      string
 	PublishDate string
 	Description string
@@ -199,9 +200,12 @@ func (c *dbCache) Save(item Item, summary *string) {
 		MarkedAsRead: false,
 	}
 
-	err := c.db.Create(&cached).Error
+	err := c.db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "guid"}},
+		DoUpdates: clause.AssignmentColumns([]string{"summary"}),
+	}).Create(&cached).Error
 	if err != nil {
-		log.Printf("failed to insert cached item: %s", err)
+		log.Printf("failed to upsert cached item: %s", err)
 	}
 }
 
