@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	fetchFeedsTimeoutSeconds = 10
-	summarizeTimeoutSeconds  = 30
-	summarizeIntervalSeconds = 10
+	fetchFeedsTimeoutSeconds = 10 // 10 seconds's timeout for fetching feeds
+	summarizeTimeoutSeconds  = 60 // 60 seconds' timeout for generations
+	summarizeIntervalSeconds = 10 // 10 seconds' interval between generations
 
 	defaultDesiredLanguage = "English"
 )

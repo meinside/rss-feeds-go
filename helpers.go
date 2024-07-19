@@ -21,7 +21,7 @@ const (
 
 	fakeUserAgent = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0`
 
-	fetchURLTimeoutSeconds = 10 // 10 seconds
+	fetchURLTimeoutSeconds = 10 // 10 seconds' timeout for fetching url contents
 )
 
 // StandardizeJSON standardizes given JSON (JWCC) bytes.
