@@ -170,7 +170,7 @@ func (c *Client) SummarizeAndCacheFeeds(feeds []Feeds) (err error) {
 				errs = append(errs, err)
 			}
 
-			// cache,
+			// cache, (or update)
 			c.cache.Save(item, &summarized)
 
 			// and sleep for a while
