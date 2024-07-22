@@ -4,7 +4,8 @@ go 1.22.5
 
 require (
 	github.com/PuerkitoBio/goquery v1.9.2
-	github.com/google/generative-ai-go v0.16.0
+	github.com/google/generative-ai-go v0.17.0
+	github.com/gorilla/feeds v1.2.0
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
 	google.golang.org/api v0.188.0
 	gorm.io/driver/sqlite v1.5.6

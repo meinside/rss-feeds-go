@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	gf "github.com/gorilla/feeds"
 )
 
 const (
@@ -80,15 +82,15 @@ func (c *Client) SetVerbose(v bool) {
 }
 
 // FetchFeeds fetches feeds.
-func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []Feeds, err error) {
-	feeds = []Feeds{}
+func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err error) {
+	feeds = []gf.RssFeed{}
 	errs := []error{}
 
 	client := &http.Client{
 		Timeout: time.Duration(fetchFeedsTimeoutSeconds) * time.Second,
 	}
 
-	var fetched Feeds
+	var fetched gf.RssFeedXml
 	for _, url := range c.feedsURLs {
 		if c.verbose {
 			log.Printf("[verbose] fetching rss feeds from url: %s", url)
@@ -120,10 +122,10 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []Feeds, err error)
 
 							if ignoreAlreadyCached {
 								// delete if it already exists in the cache
-								fetched.Channel.Items = slices.DeleteFunc(fetched.Channel.Items, func(item Item) bool {
-									exists := c.cache.Exists(item.GUID.ID)
+								fetched.Channel.Items = slices.DeleteFunc(fetched.Channel.Items, func(item *gf.RssItem) bool {
+									exists := c.cache.Exists(item.Guid.Id)
 									if c.verbose && exists {
-										log.Printf("[verbose] ignoring: '%s' (%s)", item.Title, item.GUID.ID)
+										log.Printf("[verbose] ignoring: '%s' (%s)", item.Title, item.Guid.Id)
 									}
 									return exists
 								})
@@ -133,7 +135,7 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []Feeds, err error)
 								log.Printf("[verbose] returning %d item(s)", len(fetched.Channel.Items))
 							}
 
-							feeds = append(feeds, fetched)
+							feeds = append(feeds, *fetched.Channel)
 						} else {
 							errs = append(errs, fmt.Errorf("failed to parse rss feeds from %s: %s", url, err))
 						}
@@ -159,7 +161,7 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []Feeds, err error)
 }
 
 // SummarizeAndCacheFeeds summarizes given feeds items and caches them.
-func (c *Client) SummarizeAndCacheFeeds(feeds []Feeds) (err error) {
+func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeedXml) (err error) {
 	errs := []error{}
 
 	for _, f := range feeds {
@@ -171,7 +173,7 @@ func (c *Client) SummarizeAndCacheFeeds(feeds []Feeds) (err error) {
 			}
 
 			// cache, (or update)
-			c.cache.Save(item, &summarized)
+			c.cache.Save(*item, &summarized)
 
 			// and sleep for a while
 			if i < len(f.Channel.Items)-1 {

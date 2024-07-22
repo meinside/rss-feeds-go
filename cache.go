@@ -9,12 +9,14 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/gorilla/feeds"
 )
 
 // FeedsItemsCache is an interface of feeds items' cache
 type FeedsItemsCache interface {
 	Exists(guid string) bool
-	Save(item Item, summary *string)
+	Save(item feeds.RssItem, summary *string)
 	Fetch(guid string) *CachedItem
 	MarkAsRead(guid string)
 	List(includeItemsMarkedAsRead bool) []CachedItem
@@ -28,7 +30,8 @@ type CachedItem struct {
 	gorm.Model
 
 	Title       string
-	Link        string
+	Link        string // url to the original article
+	Comments    string // url to the community comments
 	GUID        string `gorm:"uniqueIndex"`
 	Author      string
 	PublishDate string
@@ -62,17 +65,18 @@ func (c *memCache) Exists(guid string) bool {
 }
 
 // Save saves `id` to the cache.
-func (c *memCache) Save(item Item, summary *string) {
+func (c *memCache) Save(item feeds.RssItem, summary *string) {
 	if c.verbose {
 		log.Printf("[verbose] memCache - saving item to cache: %s", item.Title)
 	}
 
-	c.items[item.GUID.ID] = CachedItem{
+	c.items[item.Guid.Id] = CachedItem{
 		Title:       item.Title,
 		Link:        item.Link,
-		GUID:        item.GUID.ID,
+		Comments:    item.Comments,
+		GUID:        item.Guid.Id,
 		Author:      item.Author,
-		PublishDate: item.PublishDate,
+		PublishDate: item.PubDate,
 		Description: item.Description,
 
 		Summary: summary,
@@ -102,6 +106,7 @@ func (c *memCache) MarkAsRead(guid string) {
 		c.items[guid] = CachedItem{
 			Title:        v.Title,
 			Link:         v.Link,
+			Comments:     v.Comments,
 			GUID:         guid,
 			Author:       v.Author,
 			PublishDate:  v.PublishDate,
@@ -183,7 +188,7 @@ func (c *dbCache) Exists(guid string) (exists bool) {
 }
 
 // Save saves `id` to the cache.
-func (c *dbCache) Save(item Item, summary *string) {
+func (c *dbCache) Save(item feeds.RssItem, summary *string) {
 	if c.verbose {
 		log.Printf("[verbose] dbCache - saving item to cache: %s", item.Title)
 	}
@@ -191,9 +196,10 @@ func (c *dbCache) Save(item Item, summary *string) {
 	cached := CachedItem{
 		Title:       item.Title,
 		Link:        item.Link,
-		GUID:        item.GUID.ID,
+		Comments:    item.Comments,
+		GUID:        item.Guid.Id,
 		Author:      item.Author,
-		PublishDate: item.PublishDate,
+		PublishDate: item.PubDate,
 		Description: item.Description,
 
 		Summary:      summary,
