@@ -18,6 +18,7 @@ const (
 	rssLink        = "https://github.com/meinside/rss-feeds-go"
 	rssDescription = "Testing my RSS server..."
 	rssAuthor      = "meinside"
+	rssEmail       = "email@domain.com"
 
 	//verbose         = false
 	verbose = true
@@ -47,7 +48,7 @@ func main() {
 			w.Header().Set("Cache-Control", "no-cache")
 
 			// generate xml and serve it
-			if bytes, err := client.PublishXML(rssTitle, rssLink, rssDescription, rssAuthor, items); err == nil {
+			if bytes, err := client.PublishXML(rssTitle, rssLink, rssDescription, rssAuthor, rssEmail, items); err == nil {
 				if _, err := io.WriteString(w, string(bytes)); err != nil {
 					log.Printf("# failed to write data: %s", err)
 				}
