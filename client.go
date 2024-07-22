@@ -110,8 +110,6 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 		}
 		req.Header.Set("User-Agent", fakeUserAgent)
 		req.Header.Set("Content-Type", "text/xml;charset=UTF-8")
-		req.Header.Set("Pragma", "no-cache")
-		req.Header.Set("Cache-Control", "no-cache")
 
 		if resp, err := client.Do(req); err == nil {
 			defer resp.Body.Close()
