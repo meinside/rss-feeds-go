@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	rf "github.com/meinside/rss-feeds-go"
 )
@@ -19,6 +20,8 @@ const (
 	rssDescription = "Testing my RSS server..."
 	rssAuthor      = "meinside"
 	rssEmail       = "email@domain.com"
+
+	rssPollerAgent = "Feedly/1.0"
 
 	//verbose         = false
 	verbose = true
@@ -40,12 +43,16 @@ func main() {
 
 		// http handler
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if agent := r.Header.Get("User-Agent"); !strings.Contains(agent, rssPollerAgent) {
+				log.Printf("# dropping access from unwanted agent: %s", agent)
+				return
+			}
+
 			// fetch cached items,
 			items := client.ListCachedItems(true)
 
 			w.Header().Set("Content-Type", "application/rss+xml")
-			w.Header().Set("Pragma", "no-cache")
-			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Cache-Control", "max-age=60")
 
 			// generate xml and serve it
 			if bytes, err := client.PublishXML(rssTitle, rssLink, rssDescription, rssAuthor, rssEmail, items); err == nil {
