@@ -225,7 +225,9 @@ func (c *Client) summarize(url string) (summarized string, err error) {
 
 // ListCachedItems lists cached items.
 func (c *Client) ListCachedItems(includeItemsMarkedAsRead bool) []CachedItem {
-	return c.cache.List(includeItemsMarkedAsRead)
+	return redactItems(c.cache.List(includeItemsMarkedAsRead), []string{
+		c.googleAIAPIKey,
+	})
 }
 
 // MarkCachedItemsAsRead marks given cached items as read.

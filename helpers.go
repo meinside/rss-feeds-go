@@ -22,6 +22,8 @@ const (
 	fakeUserAgent = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0`
 
 	fetchURLTimeoutSeconds = 10 // 10 seconds' timeout for fetching url contents
+
+	redacted = "<<<REDACTED>>>"
 )
 
 // StandardizeJSON standardizes given JSON (JWCC) bytes.
@@ -153,6 +155,32 @@ func supportedHTTPContentType(contentType string) bool {
 			return false
 		}
 	}(contentType)
+}
+
+// redact given string not to expose api keys or etc.
+func redactText(text string, baddies []string) string {
+	for _, baddy := range baddies {
+		text = strings.ReplaceAll(text, baddy, redacted)
+	}
+
+	return text
+}
+
+// redact cached items' summary (to prevent accidental exposure of api keys)
+func redactItems(items []CachedItem, baddies []string) []CachedItem {
+	redacted := []CachedItem{}
+
+	var summary string
+	for _, item := range items {
+		if item.Summary != nil {
+			summary = redactText(*item.Summary, baddies)
+			item.Summary = &summary
+		}
+
+		redacted = append(redacted, item)
+	}
+
+	return redacted
 }
 
 // Prettify prettifies given thing in JSON format.
