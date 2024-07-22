@@ -9,18 +9,20 @@ import (
 	"log"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gorilla/feeds"
 	gf "github.com/gorilla/feeds"
 )
 
 const (
 	fetchFeedsTimeoutSeconds = 10 // 10 seconds's timeout for fetching feeds
 	summarizeTimeoutSeconds  = 60 // 60 seconds' timeout for generations
-	summarizeIntervalSeconds = 10 // 10 seconds' interval between generations
 
-	defaultDesiredLanguage = "English"
+	defaultSummarizeIntervalSeconds = 10 // 10 seconds' interval between generations
+	defaultDesiredLanguage          = "English"
 )
 
 // Client struct
@@ -31,8 +33,9 @@ type Client struct {
 	googleAIAPIKey string
 	googleAIModel  string
 
-	desiredLanguage string
-	verbose         bool
+	desiredLanguage          string
+	summarizeIntervalSeconds int
+	verbose                  bool
 }
 
 // NewClient returns a new client with memory cache.
@@ -58,7 +61,8 @@ func NewClientWithDB(googleAIAPIKey string, feedsURLs []string, dbFilepath strin
 			googleAIAPIKey: googleAIAPIKey,
 			googleAIModel:  defaultGoogleAIModel,
 
-			desiredLanguage: defaultDesiredLanguage,
+			desiredLanguage:          defaultDesiredLanguage,
+			summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
 		}, nil
 	} else {
 		return nil, fmt.Errorf("Failed to create a client with DB: %s", err)
@@ -73,6 +77,11 @@ func (c *Client) SetGoogleAIModel(model string) {
 // SetDesiredLanguage sets the client's desired language for summaries.
 func (c *Client) SetDesiredLanguage(lang string) {
 	c.desiredLanguage = lang
+}
+
+// SetSummarizeIntervalSeconds sets the client's summarize interval seconds.
+func (c *Client) SetSummarizeIntervalSeconds(seconds int) {
+	c.summarizeIntervalSeconds = seconds
 }
 
 // SetVerbose sets the client's verbose mode.
@@ -177,7 +186,7 @@ func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed) (err error) {
 
 			// and sleep for a while
 			if i < len(f.Items)-1 {
-				time.Sleep(summarizeIntervalSeconds * time.Second)
+				time.Sleep(time.Duration(c.summarizeIntervalSeconds) * time.Second)
 			}
 		}
 	}
@@ -229,4 +238,40 @@ func (c *Client) MarkCachedItemsAsRead(items []CachedItem) {
 // DeleteOldCachedItems deletes old cached items.
 func (c *Client) DeleteOldCachedItems() {
 	c.cache.DeleteOlderThan1Month()
+}
+
+// PublishXML returns XML bytes of given cached items.
+func (c *Client) PublishXML(title, link, description, author string, items []CachedItem) (bytes []byte, err error) {
+	feed := &feeds.Feed{
+		Title:       title,
+		Link:        &feeds.Link{Href: link},
+		Description: description,
+		Author:      &feeds.Author{Name: author},
+		Created:     time.Now(),
+	}
+
+	var summary string
+	var feedItems []*feeds.Item
+	for _, item := range items {
+		if item.Summary != nil {
+			summary = *item.Summary
+		} else {
+			summary = ""
+		}
+
+		feedItems = append(feedItems, &feeds.Item{
+			Id:          strconv.Itoa(int(item.ID)),
+			Title:       item.Title,
+			Link:        &feeds.Link{Href: item.Comments},
+			Source:      &feeds.Link{Href: item.Link},
+			Description: item.Description,
+			Content:     summary,
+			Created:     item.CreatedAt,
+			Updated:     item.UpdatedAt,
+		})
+	}
+	feed.Items = feedItems
+
+	rssFeed := (&feeds.Rss{Feed: feed}).RssFeed()
+	return xml.MarshalIndent(rssFeed.FeedXml(), "", "  ")
 }

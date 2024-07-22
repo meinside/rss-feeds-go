@@ -1,4 +1,4 @@
-module rss-feeds-summarizer
+module rss-feeds-server
 
 go 1.22.5
 
