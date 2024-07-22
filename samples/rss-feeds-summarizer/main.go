@@ -42,9 +42,8 @@ func main() {
 
 			// print to stdout,
 			for _, item := range items {
-				if item.Summary == nil { // if there is no summary yet, for any reason,
-					summary := noSummary
-					item.Summary = &summary
+				if len(item.Summary) <= 0 { // if there is no summary yet, for any reason,
+					item.Summary = noSummary
 				}
 
 				log.Printf(`
@@ -59,7 +58,7 @@ func main() {
 `,
 					item.Title,
 					item.PublishDate,
-					*item.Summary,
+					item.Summary,
 				)
 			}
 

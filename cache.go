@@ -20,7 +20,7 @@ const (
 // FeedsItemsCache is an interface of feeds items' cache
 type FeedsItemsCache interface {
 	Exists(guid string) bool
-	Save(item feeds.RssItem, summary *string)
+	Save(item feeds.RssItem, summary string)
 	Fetch(guid string) *CachedItem
 	MarkAsRead(guid string)
 	List(includeItemsMarkedAsRead bool) []CachedItem
@@ -41,7 +41,7 @@ type CachedItem struct {
 	PublishDate string
 	Description string
 
-	Summary      *string
+	Summary      string
 	MarkedAsRead bool `gorm:"index"`
 }
 
@@ -69,7 +69,7 @@ func (c *memCache) Exists(guid string) bool {
 }
 
 // Save saves `id` to the cache.
-func (c *memCache) Save(item feeds.RssItem, summary *string) {
+func (c *memCache) Save(item feeds.RssItem, summary string) {
 	if c.verbose {
 		log.Printf("[verbose] memCache - saving item to cache: %s", item.Title)
 	}
@@ -192,7 +192,7 @@ func (c *dbCache) Exists(guid string) (exists bool) {
 }
 
 // Save saves `id` to the cache.
-func (c *dbCache) Save(item feeds.RssItem, summary *string) {
+func (c *dbCache) Save(item feeds.RssItem, summary string) {
 	if c.verbose {
 		log.Printf("[verbose] dbCache - saving item to cache: %s", item.Title)
 	}

@@ -172,9 +172,9 @@ func redactItems(items []CachedItem, baddies []string) []CachedItem {
 
 	var summary string
 	for _, item := range items {
-		if item.Summary != nil {
-			summary = redactText(*item.Summary, baddies)
-			item.Summary = &summary
+		if len(item.Summary) > 0 {
+			summary = redactText(item.Summary, baddies)
+			item.Summary = summary
 		}
 
 		redacted = append(redacted, item)
