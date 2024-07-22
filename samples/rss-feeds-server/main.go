@@ -42,6 +42,10 @@ func main() {
 			// fetch cached items,
 			items := client.ListCachedItems(true)
 
+			w.Header().Set("Content-Type", "application/rss+xml")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Cache-Control", "no-cache")
+
 			// generate xml and serve it
 			if bytes, err := client.PublishXML(rssTitle, rssLink, rssDescription, rssAuthor, items); err == nil {
 				if _, err := io.WriteString(w, string(bytes)); err != nil {
