@@ -1,3 +1,4 @@
-sample/rss-feeds-summarizer/rss-feeds-summarizer
+samples/rss-feeds-summarizer/rss-feeds-summarizer
+samples/rss-feeds-server/rss-feeds-server
 *.swp*
 *.db

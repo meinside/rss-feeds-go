@@ -17,6 +17,7 @@ A go utility package for handling RSS feeds.
     - [X] In memory
     - [X] In SQLite3 file
   - [ ] Transfer summarized contents to somewhere
+- [X] Convert cached feeds as RSS XML
 
 ## Usages / Samples
 

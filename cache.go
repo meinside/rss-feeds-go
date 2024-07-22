@@ -13,6 +13,10 @@ import (
 	"github.com/gorilla/feeds"
 )
 
+const (
+	listLimit = 50
+)
+
 // FeedsItemsCache is an interface of feeds items' cache
 type FeedsItemsCache interface {
 	Exists(guid string) bool
@@ -245,7 +249,9 @@ func (c *dbCache) MarkAsRead(guid string) {
 	}
 }
 
-// List lists all cached items.
+// List lists cached items.
+//
+// NOTE: when including items marked as read, the count will be limited to `listLimit`.
 func (c *dbCache) List(includeItemsMarkedAsRead bool) (items []CachedItem) {
 	if c.verbose {
 		log.Printf("[verbose] dbCache - listing cached items with includeItemsMarkedAsRead = %v", includeItemsMarkedAsRead)
@@ -253,7 +259,9 @@ func (c *dbCache) List(includeItemsMarkedAsRead bool) (items []CachedItem) {
 
 	tx := c.db.Model(&CachedItem{})
 	if !includeItemsMarkedAsRead {
-		tx = tx.Where("marked_as_read = ?", false)
+		tx = tx.Where("marked_as_read = ?", false).Order("created_at DESC")
+	} else {
+		tx = tx.Order("created_at DESC").Limit(listLimit)
 	}
 
 	err := tx.Find(&items).Error
