@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -258,13 +257,19 @@ func (c *Client) PublishXML(title, link, description, author string, items []Cac
 
 	var feedItems []*feeds.Item
 	for _, item := range items {
+		content := item.Summary
+		if len(item.Comments) > 0 {
+			content += `<br><br>` + fmt.Sprintf(`Comments: <a href="%[1]s">%[1]s</a>`, item.Comments)
+		} else {
+			content += `<br><br>` + fmt.Sprintf(`GUID: <a href="%[1]s">%[1]s</a>`, item.GUID)
+		}
+
 		feedItem := feeds.Item{
-			Id:          strconv.Itoa(int(item.ID)),
+			Id:          item.GUID,
 			Title:       item.Title,
-			Link:        &feeds.Link{Href: item.Comments},
-			Source:      &feeds.Link{Href: item.Link},
+			Link:        &feeds.Link{Href: item.Link},
 			Description: item.Description,
-			Content:     item.Summary,
+			Content:     content,
 			Created:     item.CreatedAt,
 			Updated:     item.UpdatedAt,
 		}
