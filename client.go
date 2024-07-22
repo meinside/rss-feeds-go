@@ -182,7 +182,7 @@ func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed) (err error) {
 			}
 
 			// cache, (or update)
-			c.cache.Save(*item, &summarized)
+			c.cache.Save(*item, summarized)
 
 			// and sleep for a while
 			if i < len(f.Items)-1 {
@@ -252,28 +252,30 @@ func (c *Client) PublishXML(title, link, description, author string, items []Cac
 		Created:     time.Now(),
 	}
 
-	var summary string
+	items = slices.DeleteFunc(items, func(item CachedItem) bool {
+		return len(item.Summary) <= 0
+	})
+
 	var feedItems []*feeds.Item
 	for _, item := range items {
-		if item.Summary != nil {
-			summary = *item.Summary
-		} else {
-			summary = ""
-		}
-
-		feedItems = append(feedItems, &feeds.Item{
+		feedItem := feeds.Item{
 			Id:          strconv.Itoa(int(item.ID)),
 			Title:       item.Title,
 			Link:        &feeds.Link{Href: item.Comments},
 			Source:      &feeds.Link{Href: item.Link},
 			Description: item.Description,
-			Content:     summary,
+			Content:     item.Summary,
 			Created:     item.CreatedAt,
 			Updated:     item.UpdatedAt,
-		})
+		}
+
+		feedItems = append(feedItems, &feedItem)
 	}
 	feed.Items = feedItems
 
-	rssFeed := (&feeds.Rss{Feed: feed}).RssFeed()
+	rssFeed := (&feeds.Rss{
+		Feed: feed,
+	}).RssFeed()
+
 	return xml.MarshalIndent(rssFeed.FeedXml(), "", "  ")
 }
