@@ -161,11 +161,11 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 }
 
 // SummarizeAndCacheFeeds summarizes given feeds items and caches them.
-func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeedXml) (err error) {
+func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed) (err error) {
 	errs := []error{}
 
 	for _, f := range feeds {
-		for i, item := range f.Channel.Items {
+		for i, item := range f.Items {
 			// summarize,
 			summarized, err := c.summarize(item.Link)
 			if err != nil {
@@ -176,7 +176,7 @@ func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeedXml) (err error) {
 			c.cache.Save(*item, &summarized)
 
 			// and sleep for a while
-			if i < len(f.Channel.Items)-1 {
+			if i < len(f.Items)-1 {
 				time.Sleep(summarizeIntervalSeconds * time.Second)
 			}
 		}
