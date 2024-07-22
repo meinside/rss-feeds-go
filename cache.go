@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	listLimit = 50
+	listLimit = 100
 )
 
 // FeedsItemsCache is an interface of feeds items' cache

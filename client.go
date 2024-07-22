@@ -240,12 +240,12 @@ func (c *Client) DeleteOldCachedItems() {
 }
 
 // PublishXML returns XML bytes of given cached items.
-func (c *Client) PublishXML(title, link, description, author string, items []CachedItem) (bytes []byte, err error) {
+func (c *Client) PublishXML(title, link, description, author, email string, items []CachedItem) (bytes []byte, err error) {
 	feed := &feeds.Feed{
 		Title:       title,
 		Link:        &feeds.Link{Href: link},
 		Description: description,
-		Author:      &feeds.Author{Name: author},
+		Author:      &feeds.Author{Name: author, Email: email},
 		Created:     time.Now(),
 	}
 
