@@ -23,7 +23,7 @@ const (
 
 	fetchURLTimeoutSeconds = 10 // 10 seconds' timeout for fetching url contents
 
-	redacted = "<<<REDACTED>>>"
+	redacted = "|REDACTED|"
 )
 
 // StandardizeJSON standardizes given JSON (JWCC) bytes.
