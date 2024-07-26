@@ -14,6 +14,8 @@ import (
 
 	"github.com/gorilla/feeds"
 	gf "github.com/gorilla/feeds"
+
+	ssg "github.com/meinside/simple-scrapper-go"
 )
 
 const (
@@ -167,13 +169,13 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 }
 
 // SummarizeAndCacheFeeds summarizes given feeds items and caches them.
-func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed) (err error) {
+func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed, urlScrapper ...*ssg.Scrapper) (err error) {
 	errs := []error{}
 
 	for _, f := range feeds {
 		for i, item := range f.Items {
 			// summarize,
-			summarized, err := c.summarize(item.Link)
+			summarized, err := c.summarize(item.Link, urlScrapper...)
 			if err != nil {
 				errs = append(errs, err)
 			}
@@ -196,7 +198,7 @@ func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed) (err error) {
 }
 
 // summarize the content of given `url`
-func (c *Client) summarize(url string) (summarized string, err error) {
+func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized string, err error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), summarizeTimeoutSeconds*time.Second)
 	defer cancel()
 
@@ -205,7 +207,22 @@ func (c *Client) summarize(url string) (summarized string, err error) {
 	}
 
 	var text string
-	if text, err = urlToText(url, c.verbose); err == nil {
+
+	if len(urlScrapper) > 0 {
+		scrapper := urlScrapper[0]
+
+		var crawled map[string]string
+		crawled, err = scrapper.CrawlURLs([]string{url}, true)
+
+		for _, v := range crawled {
+			text = v // get the first (and the only one) value
+			break
+		}
+	} else {
+		text, err = urlToText(url, c.verbose)
+	}
+
+	if err == nil {
 		prompt := fmt.Sprintf(summaryPromptFormat, c.desiredLanguage, text)
 
 		if summarized, err = c.generate(ctx, prompt); err == nil {
