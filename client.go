@@ -206,9 +206,10 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 		log.Printf("[verbose] summarizing content of url: %s", url)
 	}
 
-	var text string
+	contentType, _ := getContentType(url, c.verbose)
 
-	if len(urlScrapper) > 0 {
+	var text string
+	if len(urlScrapper) > 0 && strings.HasPrefix(contentType, "text/html") { // if scrapper is given, and content-type is HTML, use it
 		scrapper := urlScrapper[0]
 
 		var crawled map[string]string
@@ -218,7 +219,7 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 			text = v // get the first (and the only one) value
 			break
 		}
-	} else {
+	} else { // otherwise, use `urlToText` function
 		text, err = urlToText(url, c.verbose)
 	}
 

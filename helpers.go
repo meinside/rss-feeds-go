@@ -47,6 +47,30 @@ func errorString(err error) (error string) {
 	}
 }
 
+// get content type from given url with HTTP GET
+func getContentType(url string, verbose bool) (contentType string, err error) {
+	client := &http.Client{
+		Timeout: time.Duration(fetchURLTimeoutSeconds) * time.Second,
+	}
+
+	if verbose {
+		log.Printf("[verbose] fetching head from url: %s", url)
+	}
+
+	req, err := http.NewRequest("HEAD", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %s", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch head from url: %s", err)
+	}
+	defer resp.Body.Close()
+
+	return resp.Header.Get("Content-Type"), nil
+}
+
 // fetch the content from given url and convert it to text for prompting.
 func urlToText(url string, verbose bool) (body string, err error) {
 	client := &http.Client{
@@ -143,7 +167,7 @@ func removeConsecutiveEmptyLines(input string) string {
 	return regex.ReplaceAllString(input, "\n")
 }
 
-// check if given HTTP content type is supported
+// check if given HTTP content type is supported for `urlToText`
 func supportedHTTPContentType(contentType string) bool {
 	return func(contentType string) bool {
 		switch {
