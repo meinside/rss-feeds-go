@@ -6,20 +6,19 @@ import (
 )
 
 func TestHelpers(t *testing.T) {
-	kvs := map[string]string{
+	// test `getContentType`
+	urlsAndContentTypes := map[string]string{
 		"https://github.com/meinside": "text/html",
 		"https://raw.githubusercontent.com/meinside/meinside/main/res/profile/sloth.jpg": "image/jpeg",
 	}
-
-	// test `getContentType`
-	for k, v := range kvs {
-		typ, err := getContentType(k, false)
+	for url, contentType := range urlsAndContentTypes {
+		typ, err := getContentType(url, false)
 		if err != nil {
-			t.Errorf("failed to get content type of '%s': %s", k, err)
+			t.Errorf("failed to get content type of '%s': %s", url, err)
 		}
 
-		if !strings.HasPrefix(typ, v) {
-			t.Errorf("expected content type: '%s' vs fetched: '%s'", v, typ)
+		if !strings.HasPrefix(typ, contentType) {
+			t.Errorf("expected content type: '%s' vs fetched: '%s'", contentType, typ)
 		}
 	}
 }

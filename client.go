@@ -24,6 +24,8 @@ const (
 
 	defaultSummarizeIntervalSeconds = 10 // 10 seconds' interval between generations
 	defaultDesiredLanguage          = "English"
+
+	maxRetryCount = 3
 )
 
 // Client struct
@@ -206,25 +208,9 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 		log.Printf("[verbose] summarizing content of url: %s", url)
 	}
 
-	contentType, _ := getContentType(url, c.verbose)
-
-	var text string
-	if len(urlScrapper) > 0 && strings.HasPrefix(contentType, "text/html") { // if scrapper is given, and content-type is HTML, use it
-		scrapper := urlScrapper[0]
-
-		var crawled map[string]string
-		crawled, err = scrapper.CrawlURLs([]string{url}, true)
-
-		for _, v := range crawled {
-			text = v // get the first (and the only one) value
-			break
-		}
-	} else { // otherwise, use `urlToText` function
-		text, err = urlToText(url, c.verbose)
-	}
-
-	if err == nil {
-		prompt := fmt.Sprintf(summaryPromptFormat, c.desiredLanguage, text)
+	var fetched string
+	if fetched, err = c.fetch(maxRetryCount, url, urlScrapper...); err == nil {
+		prompt := fmt.Sprintf(summaryPromptFormat, c.desiredLanguage, fetched)
 
 		if summarized, err = c.generate(ctx, prompt); err == nil {
 			return summarized, nil
@@ -236,6 +222,36 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 	}
 
 	return fmt.Sprintf("Summary failed with error: %s", errorString(err)), err
+}
+
+// fetch url content with or without url scrapper
+func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.Scrapper) (scrapped string, err error) {
+	contentType, _ := getContentType(url, c.verbose)
+
+	if len(urlScrapper) > 0 && strings.HasPrefix(contentType, "text/html") { // if scrapper is given, and content-type is HTML, use it
+		scrapper := urlScrapper[0]
+
+		var crawled map[string]string
+		crawled, err = scrapper.CrawlURLs([]string{url}, true)
+
+		for _, v := range crawled {
+			scrapped = v // get the first (and the only one) value
+			break
+		}
+	} else { // otherwise, use `urlToText` function
+		scrapped, err = urlToText(url, c.verbose)
+	}
+
+	// retry if needed
+	if err != nil && remainingRetryCount > 0 {
+		if c.verbose {
+			log.Printf("[verbose] retrying fetching from url '%s' (remaining count: %d)", url, remainingRetryCount)
+		}
+
+		return c.fetch(remainingRetryCount-1, url, urlScrapper...)
+	}
+
+	return scrapped, err
 }
 
 // ListCachedItems lists cached items.
