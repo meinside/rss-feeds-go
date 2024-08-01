@@ -235,7 +235,8 @@ func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.
 		crawled, err = scrapper.CrawlURLs([]string{url}, true)
 
 		for _, v := range crawled {
-			scrapped = v // get the first (and the only one) value
+			// get the first (and the only one) value
+			scrapped = fmt.Sprintf(urlToTextFormat, url, contentType, v)
 			break
 		}
 	} else { // otherwise, use `urlToText` function
