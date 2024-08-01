@@ -11,7 +11,7 @@ import (
 
 const (
 	defaultGoogleAIModel    = "gemini-1.5-flash-latest"
-	systemInstructionFormat = `You are a chat bot for summarizing RSS feeds and their original articles, which is built with Golang and Google Gemini API(model: %[1]s).
+	systemInstructionFormat = `You are a chat bot for summarizing web contents, which is built with Golang and Google Gemini API(model: %[1]s).
 
 Current datetime is %[2]s.
 
@@ -23,7 +23,7 @@ Respond to user messages according to the following principles:
 - Be as concise and meaningful as possible.
 - Your response must be in plain text, so do not try to emphasize words with markdown characters.
 `
-	summaryPromptFormat = `Summarize the following URL in %[1]s language:
+	summaryPromptFormat = `Summarize the content of following <link></link> tag in %[1]s language:
 
 %[2]s`
 
