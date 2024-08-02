@@ -6,9 +6,9 @@ require (
 	github.com/PuerkitoBio/goquery v1.9.2
 	github.com/google/generative-ai-go v0.17.0
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/simple-scrapper-go v0.0.2
+	github.com/meinside/simple-scrapper-go v0.0.3
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
-	google.golang.org/api v0.189.0
+	google.golang.org/api v0.190.0
 	gorm.io/driver/sqlite v1.5.6
 	gorm.io/gorm v1.25.11
 )
@@ -16,7 +16,7 @@ require (
 require (
 	cloud.google.com/go v0.115.0 // indirect
 	cloud.google.com/go/ai v0.8.2 // indirect
-	cloud.google.com/go/auth v0.7.2 // indirect
+	cloud.google.com/go/auth v0.7.3 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.3 // indirect
 	cloud.google.com/go/compute/metadata v0.5.0 // indirect
 	cloud.google.com/go/longrunning v0.5.11 // indirect

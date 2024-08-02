@@ -19,10 +19,10 @@ import (
 )
 
 const (
-	fetchFeedsTimeoutSeconds = 10 // 10 seconds's timeout for fetching feeds
-	summarizeTimeoutSeconds  = 60 // 60 seconds' timeout for generations
+	fetchFeedsTimeoutSeconds = 10     // 10 seconds's timeout for fetching feeds
+	summarizeTimeoutSeconds  = 3 * 60 // 3 minutes' timeout for `get content type + fetch (retry) + generation`
 
-	defaultSummarizeIntervalSeconds = 10 // 10 seconds' interval between generations
+	defaultSummarizeIntervalSeconds = 10 // 10 seconds' interval between summaries
 	defaultDesiredLanguage          = "English"
 
 	maxRetryCount = 3
