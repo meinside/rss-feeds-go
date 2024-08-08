@@ -290,7 +290,8 @@ func (c *Client) PublishXML(title, link, description, author, email string, item
 
 	var feedItems []*feeds.Item
 	for _, item := range items {
-		content := item.Summary
+		content := decorateHTML(item.Summary)
+
 		if len(item.Comments) > 0 {
 			content += `<br><br>` + fmt.Sprintf(`Comments: <a href="%[1]s">%[1]s</a>`, item.Comments)
 		} else {
