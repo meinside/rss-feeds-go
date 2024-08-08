@@ -207,6 +207,20 @@ func redactItems(items []CachedItem, baddies []string) []CachedItem {
 	return redacted
 }
 
+// decorate given `body` as HTML
+func decorateHTML(body string) string {
+	// convert "\n" to "<br>"
+	body = strings.ReplaceAll(body, "\n", "<br>")
+
+	// convert "**something**" to "<b>something</b>"
+	re := regexp.MustCompile(`\*\*(.*?)\*\*`)
+	body = re.ReplaceAllString(body, `<b>$1</b>`)
+
+	// TODO: add some more decorations
+
+	return body
+}
+
 // Prettify prettifies given thing in JSON format.
 func Prettify(v any) string {
 	if bytes, err := json.MarshalIndent(v, "", "  "); err == nil {
