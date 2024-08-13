@@ -71,8 +71,8 @@ func getContentType(url string, verbose bool) (contentType string, err error) {
 	return resp.Header.Get("Content-Type"), nil
 }
 
-// fetch the content from given url and convert it to text for prompting.
-func urlToText(url string, verbose bool) (body string, err error) {
+// fetch the content from given url and convert it for prompting.
+func fetchURLContent(url string, verbose bool) (content []byte, contentType string, err error) {
 	client := &http.Client{
 		Timeout: time.Duration(fetchURLTimeoutSeconds) * time.Second,
 	}
@@ -83,24 +83,24 @@ func urlToText(url string, verbose bool) (body string, err error) {
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %s", err)
+		return nil, contentType, fmt.Errorf("failed to create request: %s", err)
 	}
 	req.Header.Set("User-Agent", fakeUserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch contents from url: %s", err)
+		return nil, contentType, fmt.Errorf("failed to fetch contents from url: %s", err)
 	}
 	defer resp.Body.Close()
 
-	contentType := resp.Header.Get("Content-Type")
+	contentType = resp.Header.Get("Content-Type")
 
 	if verbose {
 		log.Printf("[verbose] fetched '%s' from url: %s", contentType, url)
 	}
 
 	if resp.StatusCode == 200 {
-		if supportedHTTPContentType(contentType) {
+		if isTextFormattableContent(contentType) { // then format as text prompt
 			if strings.HasPrefix(contentType, "text/html") {
 				var doc *goquery.Document
 				if doc, err = goquery.NewDocumentFromReader(resp.Body); err == nil {
@@ -109,38 +109,42 @@ func urlToText(url string, verbose bool) (body string, err error) {
 					_ = doc.Find("link[rel=\"stylesheet\"]").Remove() // css links
 					_ = doc.Find("style").Remove()                    // embeded css tyles
 
-					body = fmt.Sprintf(urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(doc.Text()))
+					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(doc.Text())))
 				} else {
-					body = fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this HTML document.")
+					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this HTML document."))
 					err = fmt.Errorf("failed to read '%s' document from %s: %s", contentType, url, err)
 				}
 			} else if strings.HasPrefix(contentType, "text/") {
 				var bytes []byte
 				if bytes, err = io.ReadAll(resp.Body); err == nil {
 					// (success)
-					body = fmt.Sprintf(urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(string(bytes))) // NOTE: removing redundant empty lines
+					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(string(bytes)))) // NOTE: removing redundant empty lines
 				} else {
-					body = fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this document.")
+					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this document."))
 					err = fmt.Errorf("failed to read '%s' document from %s: %s", contentType, url, err)
 				}
 			} else if strings.HasPrefix(contentType, "application/json") {
 				var bytes []byte
 				if bytes, err = io.ReadAll(resp.Body); err == nil {
-					body = fmt.Sprintf(urlToTextFormat, url, contentType, string(bytes))
+					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, string(bytes)))
 				} else {
-					body = fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this document.")
+					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this document."))
 					err = fmt.Errorf("failed to read '%s' document from %s: %s", contentType, url, err)
 				}
 			} else {
-				body = fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType))
+				content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType)))
 				err = fmt.Errorf("content type '%s' not supported for url: %s", contentType, url)
 			}
+		} else if isFileContent(contentType) {
+			if content, err = io.ReadAll(resp.Body); err != nil { // then read bytes as a file
+				err = fmt.Errorf("failed to read bytes from url '%s': %s", url, err)
+			}
 		} else {
-			body = fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType))
+			content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType)))
 			err = fmt.Errorf("content type '%s' not supported for url: %s", contentType, url)
 		}
 	} else {
-		body = fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("HTTP Error %d", resp.StatusCode))
+		content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("HTTP Error %d", resp.StatusCode)))
 		err = fmt.Errorf("http error %d from url: %s", resp.StatusCode, url)
 	}
 
@@ -150,7 +154,7 @@ func urlToText(url string, verbose bool) (body string, err error) {
 		}
 	*/
 
-	return body, err
+	return content, contentType, err
 }
 
 // remove consecutive empty lines for compacting prompt lines
@@ -167,13 +171,25 @@ func removeConsecutiveEmptyLines(input string) string {
 	return regex.ReplaceAllString(input, "\n")
 }
 
-// check if given HTTP content type is supported for `urlToText`
-func supportedHTTPContentType(contentType string) bool {
+// check if given HTTP content type is formattable as text for `fetchURL`
+func isTextFormattableContent(contentType string) bool {
 	return func(contentType string) bool {
 		switch {
 		case strings.HasPrefix(contentType, "text/"):
 			return true
 		case strings.HasPrefix(contentType, "application/json"):
+			return true
+		default:
+			return false
+		}
+	}(contentType)
+}
+
+// check if given HTTP content type is used as file for `fetchURL`
+func isFileContent(contentType string) bool {
+	return func(contentType string) bool {
+		switch {
+		case strings.HasPrefix(contentType, "application/pdf"):
 			return true
 		default:
 			return false
