@@ -208,16 +208,31 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 		log.Printf("[verbose] summarizing content of url: %s", url)
 	}
 
-	var fetched string
-	if fetched, err = c.fetch(maxRetryCount, url, urlScrapper...); err == nil {
-		prompt := fmt.Sprintf(summaryPromptFormat, c.desiredLanguage, fetched)
+	var fetched []byte
+	var contentType string
+	if fetched, contentType, err = c.fetch(maxRetryCount, url, urlScrapper...); err == nil {
+		if isTextFormattableContent(contentType) { // use text prompt
+			prompt := fmt.Sprintf(summarizeURLPromptFormat, c.desiredLanguage, string(fetched))
 
-		if summarized, err = c.generate(ctx, prompt); err == nil {
-			return summarized, nil
-		} else {
-			if c.verbose {
-				log.Printf("[verbose] failed to generate summary with prompt: '%s', error: %s", prompt, errorString(err))
+			if summarized, err = c.generate(ctx, prompt); err == nil {
+				return summarized, nil
+			} else {
+				if c.verbose {
+					log.Printf("[verbose] failed to generate summary with prompt: '%s', error: %s", prompt, errorString(err))
+				}
 			}
+		} else if isFileContent(contentType) { // use prompt with files
+			prompt := fmt.Sprintf(summarizeFilePromptFormat, c.desiredLanguage)
+
+			if summarized, err = c.generate(ctx, prompt, fetched); err == nil {
+				return summarized, nil
+			} else {
+				if c.verbose {
+					log.Printf("[verbose] failed to generate summary with prompt and file: '%s', error: %s", prompt, errorString(err))
+				}
+			}
+		} else {
+			err = fmt.Errorf("not a summarizable content type: %s", contentType)
 		}
 	}
 
@@ -225,8 +240,8 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 }
 
 // fetch url content with or without url scrapper
-func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.Scrapper) (scrapped string, err error) {
-	contentType, _ := getContentType(url, c.verbose)
+func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.Scrapper) (scrapped []byte, contentType string, err error) {
+	contentType, _ = getContentType(url, c.verbose)
 
 	if len(urlScrapper) > 0 && strings.HasPrefix(contentType, "text/html") { // if scrapper is given, and content-type is HTML, use it
 		scrapper := urlScrapper[0]
@@ -236,11 +251,11 @@ func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.
 
 		for _, v := range crawled {
 			// get the first (and the only one) value
-			scrapped = fmt.Sprintf(urlToTextFormat, url, contentType, v)
+			scrapped = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, v))
 			break
 		}
-	} else { // otherwise, use `urlToText` function
-		scrapped, err = urlToText(url, c.verbose)
+	} else { // otherwise, use `fetchURLContent` function
+		scrapped, contentType, err = fetchURLContent(url, c.verbose)
 	}
 
 	// retry if needed
@@ -252,7 +267,7 @@ func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.
 		return c.fetch(remainingRetryCount-1, url, urlScrapper...)
 	}
 
-	return scrapped, err
+	return scrapped, contentType, err
 }
 
 // ListCachedItems lists cached items.
