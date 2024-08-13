@@ -1,10 +1,15 @@
 package rf
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log"
+	"strings"
+	"sync"
 	"time"
 
+	"github.com/gabriel-vasile/mimetype"
 	"github.com/google/generative-ai-go/genai"
 	"google.golang.org/api/option"
 )
@@ -23,9 +28,10 @@ Respond to user messages according to the following principles:
 - Be as concise and meaningful as possible.
 - Your response must be in plain text, so do not try to emphasize words with markdown characters.
 `
-	summaryPromptFormat = `Summarize the content of following <link></link> tag in %[1]s language:
+	summarizeURLPromptFormat = `Summarize the content of following <link></link> tag in %[1]s language:
 
 %[2]s`
+	summarizeFilePromptFormat = `Summarize the content of attached file(s) in %[1]s language.`
 
 	timeoutSeconds = 60 // 1 minute
 )
@@ -38,7 +44,7 @@ const (
 )
 
 // generate with given things
-func (c *Client) generate(ctx context.Context, prompt string) (generated string, err error) {
+func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (generated string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, timeoutSeconds*time.Second)
 	defer cancel()
 
@@ -62,9 +68,37 @@ func (c *Client) generate(ctx context.Context, prompt string) (generated string,
 	// safety filters (block only high)
 	model.SafetySettings = safetySettings(genai.HarmBlockThreshold(genai.HarmBlockOnlyHigh))
 
+	// prompt
+	prompts := []genai.Part{
+		genai.Text(prompt),
+	}
+
+	// files
+	fileNames := []string{}
+	var mimeType string
+	for _, file := range files {
+		mimeType = stripCharsetFromMimeType(mimetype.Detect(file).String())
+
+		if file, err := client.UploadFile(ctx, "", bytes.NewReader(file), &genai.UploadFileOptions{
+			MIMEType: mimeType,
+		}); err == nil {
+			prompts = append(prompts, genai.FileData{
+				MIMEType: file.MIMEType,
+				URI:      file.URI,
+			})
+
+			fileNames = append(fileNames, file.Name) // FIXME: will wait synchronously for it to become active
+		} else {
+			log.Printf("failed to upload file(%s) for prompt: %s", mimeType, err)
+		}
+	}
+
+	// FIXME: wait for all files to become active
+	waitForFiles(ctx, client, fileNames)
+
 	// generate
 	var result *genai.GenerateContentResponse
-	if result, err = model.GenerateContent(ctx, genai.Text(prompt)); err == nil {
+	if result, err = model.GenerateContent(ctx, prompts...); err == nil {
 		if len(result.Candidates) > 0 {
 			candidate := result.Candidates[0]
 
@@ -122,4 +156,36 @@ func defaultSystemInstruction() string {
 		defaultGoogleAIModel,
 		datetime,
 	)
+}
+
+// wait for all files to be active
+func waitForFiles(ctx context.Context, client *genai.Client, fileNames []string) {
+	var wg sync.WaitGroup
+	for _, fileName := range fileNames {
+		wg.Add(1)
+
+		go func(name string) {
+			for {
+				if file, err := client.GetFile(ctx, name); err == nil {
+					if file.State == genai.FileStateActive {
+						wg.Done()
+						break
+					} else {
+						time.Sleep(300 * time.Millisecond)
+					}
+				} else {
+					log.Printf("failed to get file: %s", err)
+
+					time.Sleep(300 * time.Millisecond)
+				}
+			}
+		}(fileName)
+	}
+	wg.Wait()
+}
+
+// remove trailing charset or etc. from given mime type string
+func stripCharsetFromMimeType(mimeType string) string {
+	splitted := strings.Split(mimeType, ";")
+	return strings.TrimSpace(splitted[0])
 }
