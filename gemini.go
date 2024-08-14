@@ -16,7 +16,7 @@ import (
 
 const (
 	defaultGoogleAIModel    = "gemini-1.5-flash-latest"
-	systemInstructionFormat = `You are a chat bot for summarizing web contents, which is built with Golang and Google Gemini API(model: %[1]s).
+	systemInstructionFormat = `You are a chat bot for summarizing web contents, which uses Google Gemini API(model: %[1]s).
 
 Current datetime is %[2]s.
 
@@ -25,15 +25,13 @@ Respond to user messages according to the following principles:
 - Be as accurate as possible.
 - Be as truthful as possible.
 - Be as comprehensive and informative as possible.
-- Be as concise and meaningful as possible.
-- Your response must be in plain text, so do not try to emphasize words with markdown characters.
 `
 	summarizeURLPromptFormat = `Summarize the content of following <link></link> tag in %[1]s language:
 
 %[2]s`
 	summarizeFilePromptFormat = `Summarize the content of attached file(s) in %[1]s language.`
 
-	timeoutSeconds = 60 // 1 minute
+	generationTimeoutSeconds = 60 // 1 minute
 )
 
 type role string
@@ -45,7 +43,7 @@ const (
 
 // generate with given things
 func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (generated string, err error) {
-	ctx, cancel := context.WithTimeout(ctx, timeoutSeconds*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
 	defer cancel()
 
 	var client *genai.Client
