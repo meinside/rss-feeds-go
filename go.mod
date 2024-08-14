@@ -9,15 +9,15 @@ require (
 	github.com/gorilla/feeds v1.2.0
 	github.com/meinside/simple-scrapper-go v0.0.3
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
-	google.golang.org/api v0.191.0
+	google.golang.org/api v0.192.0
 	gorm.io/driver/sqlite v1.5.6
 	gorm.io/gorm v1.25.11
 )
 
 require (
-	cloud.google.com/go v0.115.0 // indirect
+	cloud.google.com/go v0.115.1 // indirect
 	cloud.google.com/go/ai v0.8.2 // indirect
-	cloud.google.com/go/auth v0.8.0 // indirect
+	cloud.google.com/go/auth v0.8.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
 	cloud.google.com/go/compute/metadata v0.5.0 // indirect
 	cloud.google.com/go/longrunning v0.5.12 // indirect
