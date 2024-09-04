@@ -16,9 +16,9 @@ import (
 
 const (
 	defaultGoogleAIModel    = "gemini-1.5-flash-latest"
-	systemInstructionFormat = `You are a chat bot for summarizing web contents, which uses Google Gemini API(model: %[1]s).
+	systemInstructionFormat = `You are a chat bot for summarizing contents retrieved from web sites or RSS feeds.
 
-Current datetime is %[2]s.
+Current datetime is %[1]s.
 
 Respond to user messages according to the following principles:
 - Do not repeat the user's request.
@@ -148,11 +148,8 @@ func safetySettings(threshold genai.HarmBlockThreshold) (settings []*genai.Safet
 
 // generate a default system instruction with given configuration
 func defaultSystemInstruction() string {
-	datetime := time.Now().Format("2006-01-02 15:04:05 (Mon)")
-
 	return fmt.Sprintf(systemInstructionFormat,
-		defaultGoogleAIModel,
-		datetime,
+		time.Now().Format("2006-01-02 15:04:05 (Mon) MST"),
 	)
 }
 
