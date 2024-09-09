@@ -109,7 +109,11 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 					}
 				}
 			} else {
-				err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+				if candidate.FinishReason != genai.FinishReasonUnspecified {
+					err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason.String())
+				} else {
+					err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+				}
 			}
 		}
 	}
