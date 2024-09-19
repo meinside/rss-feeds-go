@@ -4,7 +4,6 @@ go 1.23.1
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.0
-	github.com/gabriel-vasile/mimetype v1.4.5
 	github.com/google/generative-ai-go v0.18.0
 	github.com/gorilla/feeds v1.2.0
 	github.com/meinside/gemini-things-go v0.0.2
@@ -25,6 +24,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/deckarep/golang-set/v2 v2.6.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.5 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.3 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

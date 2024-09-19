@@ -40,6 +40,7 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 	defer cancel()
 
 	gtc := gt.NewClient(c.googleAIModel, c.googleAIAPIKey)
+	gtc.SetTimeout(generationTimeoutSeconds)
 
 	// system instruction
 	gtc.SetSystemInstructionFunc(defaultSystemInstruction)
