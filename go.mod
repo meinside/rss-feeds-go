@@ -6,7 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.10.0
 	github.com/google/generative-ai-go v0.18.0
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.0.3
+	github.com/meinside/gemini-things-go v0.0.4
 	github.com/meinside/simple-scrapper-go v0.0.3
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
 	google.golang.org/api v0.198.0
