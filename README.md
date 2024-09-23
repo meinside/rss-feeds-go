@@ -47,7 +47,3 @@ func main() {
 
 Other sample applications are in `./samples/` directory.
 
-## License
-
-MIT
-
