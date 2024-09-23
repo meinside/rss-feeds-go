@@ -179,6 +179,9 @@ func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed, urlScrapper ...*ssg.
 			// summarize,
 			summarized, err := c.summarize(item.Link, urlScrapper...)
 			if err != nil {
+				// prepend error text to the original content
+				summarized = fmt.Sprintf("<b>%s</b>\n\n%s", summarized, item.Description)
+
 				errs = append(errs, err)
 			}
 
