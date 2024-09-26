@@ -6,10 +6,10 @@ require (
 	github.com/PuerkitoBio/goquery v1.10.0
 	github.com/google/generative-ai-go v0.18.0
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.0.4
+	github.com/meinside/gemini-things-go v0.0.6
 	github.com/meinside/simple-scrapper-go v0.0.3
 	github.com/tailscale/hujson v0.0.0-20221223112325-20486734a56a
-	google.golang.org/api v0.198.0
+	google.golang.org/api v0.199.0
 	gorm.io/driver/sqlite v1.5.6
 	gorm.io/gorm v1.25.12
 )
@@ -17,9 +17,9 @@ require (
 require (
 	cloud.google.com/go v0.115.1 // indirect
 	cloud.google.com/go/ai v0.8.2 // indirect
-	cloud.google.com/go/auth v0.9.4 // indirect
+	cloud.google.com/go/auth v0.9.5 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
-	cloud.google.com/go/compute/metadata v0.5.1 // indirect
+	cloud.google.com/go/compute/metadata v0.5.2 // indirect
 	cloud.google.com/go/longrunning v0.6.1 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
 	github.com/deckarep/golang-set/v2 v2.6.0 // indirect
@@ -38,7 +38,7 @@ require (
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-sqlite3 v1.14.23 // indirect
 	github.com/meinside/randomized-string-generator-go v0.0.1 // indirect
-	github.com/playwright-community/playwright-go v0.4701.0 // indirect
+	github.com/playwright-community/playwright-go v0.4702.0 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.55.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.55.0 // indirect
@@ -54,8 +54,8 @@ require (
 	golang.org/x/sys v0.25.0 // indirect
 	golang.org/x/text v0.18.0 // indirect
 	golang.org/x/time v0.6.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20240903143218-8af14fe29dc1 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240903143218-8af14fe29dc1 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20240924160255-9d4c2d233b61 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20240924160255-9d4c2d233b61 // indirect
 	google.golang.org/grpc v1.67.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 )
