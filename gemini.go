@@ -50,9 +50,9 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 	gtc.SetSystemInstructionFunc(defaultSystemInstruction)
 
 	// prompt & files
-	promptFiles := []io.Reader{}
-	for _, file := range files {
-		promptFiles = append(promptFiles, bytes.NewReader(file))
+	promptFiles := map[string]io.Reader{}
+	for i, file := range files {
+		promptFiles[fmt.Sprintf("file %d", i+1)] = bytes.NewReader(file)
 	}
 
 	// generate
