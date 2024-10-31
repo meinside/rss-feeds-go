@@ -7,7 +7,7 @@ require (
 	github.com/google/generative-ai-go v0.18.0
 	github.com/gorilla/feeds v1.2.0
 	github.com/meinside/gemini-things-go v0.1.6
-	github.com/meinside/simple-scrapper-go v0.0.3
+	github.com/meinside/simple-scrapper-go v0.0.4
 	github.com/tailscale/hujson v0.0.0-20241010212012-29efb4a0184b
 	google.golang.org/api v0.203.0
 	gorm.io/driver/sqlite v1.5.6
@@ -17,8 +17,8 @@ require (
 require (
 	cloud.google.com/go v0.116.0 // indirect
 	cloud.google.com/go/ai v0.8.2 // indirect
-	cloud.google.com/go/auth v0.9.9 // indirect
-	cloud.google.com/go/auth/oauth2adapt v0.2.4 // indirect
+	cloud.google.com/go/auth v0.10.0 // indirect
+	cloud.google.com/go/auth/oauth2adapt v0.2.5 // indirect
 	cloud.google.com/go/compute/metadata v0.5.2 // indirect
 	cloud.google.com/go/longrunning v0.6.2 // indirect
 	github.com/andybalholm/cascadia v1.3.2 // indirect
