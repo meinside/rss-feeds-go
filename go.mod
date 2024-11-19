@@ -6,10 +6,10 @@ require (
 	github.com/PuerkitoBio/goquery v1.10.0
 	github.com/google/generative-ai-go v0.18.0
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.1.10
+	github.com/meinside/gemini-things-go v0.1.12
 	github.com/meinside/simple-scrapper-go v0.0.4
 	github.com/tailscale/hujson v0.0.0-20241010212012-29efb4a0184b
-	google.golang.org/api v0.205.0
+	google.golang.org/api v0.206.0
 	gorm.io/driver/sqlite v1.5.6
 	gorm.io/gorm v1.25.12
 )
@@ -52,8 +52,8 @@ require (
 	golang.org/x/sys v0.27.0 // indirect
 	golang.org/x/text v0.20.0 // indirect
 	golang.org/x/time v0.8.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20241113202542-65e8d215514f // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241113202542-65e8d215514f // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20241118233622-e639e219e697 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/grpc v1.68.0 // indirect
-	google.golang.org/protobuf v1.35.1 // indirect
+	google.golang.org/protobuf v1.35.2 // indirect
 )
