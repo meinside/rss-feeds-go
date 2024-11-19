@@ -3,18 +3,22 @@ package rf
 import (
 	"log"
 	"maps"
+	"os"
 	"slices"
 	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 
 	"github.com/gorilla/feeds"
 )
 
 const (
 	listLimit = 100
+
+	slowQueryThresholdSeconds = 3
 )
 
 // FeedsItemsCache is an interface of feeds items' cache
@@ -294,7 +298,18 @@ func (c *dbCache) SetVerbose(v bool) {
 
 // return a new db cache
 func newDBCache(filepath string) (cache *dbCache, err error) {
-	if db, err := gorm.Open(sqlite.Open(filepath), &gorm.Config{}); err == nil {
+	if db, err := gorm.Open(sqlite.Open(filepath), &gorm.Config{
+		Logger: logger.New(
+			log.New(os.Stdout, "\r\n", log.LstdFlags),
+			logger.Config{
+				SlowThreshold:             slowQueryThresholdSeconds * time.Second,
+				LogLevel:                  logger.Warn,
+				IgnoreRecordNotFoundError: true,
+				ParameterizedQueries:      true,
+				Colorful:                  false,
+			},
+		),
+	}); err == nil {
 		// migrate the schema
 		if err := db.AutoMigrate(&CachedItem{}); err != nil {
 			log.Printf("failed to migrate db: %s", err)

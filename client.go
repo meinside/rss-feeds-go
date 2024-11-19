@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	fetchFeedsTimeoutSeconds = 10     // 10 seconds's timeout for fetching feeds
+	fetchFeedsTimeoutSeconds = 30     // 30 seconds's timeout for fetching feeds
 	summarizeTimeoutSeconds  = 3 * 60 // 3 minutes' timeout for `get content type + fetch (retry) + generation`
 
 	defaultSummarizeIntervalSeconds = 10 // 10 seconds' interval between summaries
@@ -50,7 +50,8 @@ func NewClient(googleAIAPIKey string, feedsURLs []string) *Client {
 		googleAIAPIKey: googleAIAPIKey,
 		googleAIModel:  defaultGoogleAIModel,
 
-		desiredLanguage: defaultDesiredLanguage,
+		desiredLanguage:          defaultDesiredLanguage,
+		summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
 	}
 }
 
