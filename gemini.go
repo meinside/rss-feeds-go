@@ -57,7 +57,7 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 
 	// generate
 	var result *genai.GenerateContentResponse
-	if result, err = gtc.Generate(ctx, prompt, promptFiles); err == nil {
+	if result, err = gtc.Generate(ctx, prompt, promptFiles, gt.NewGenerationOptions()); err == nil {
 		if len(result.Candidates) > 0 {
 			candidate := result.Candidates[0]
 
