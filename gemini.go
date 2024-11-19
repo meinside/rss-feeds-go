@@ -3,14 +3,12 @@ package rf
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"time"
 
 	// google ai
 	"github.com/google/generative-ai-go/genai"
-	"google.golang.org/api/googleapi"
 
 	// my libraries
 	gt "github.com/meinside/gemini-things-go"
@@ -34,12 +32,10 @@ Respond to user messages according to the following principles:
 	summarizeFilePromptFormat = `Summarize the content of attached file(s) in %[1]s language.`
 
 	generationTimeoutSeconds = 60 // 1 minute
-
-	sleepSecondsBeforeRetry = 5
 )
 
 // generate with given things
-func (c *Client) generate(ctx context.Context, remainingRetryCount int, prompt string, files ...[]byte) (generated string, err error) {
+func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (generated string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
 	defer cancel()
 
@@ -81,16 +77,7 @@ func (c *Client) generate(ctx context.Context, remainingRetryCount int, prompt s
 				}
 			}
 		}
-	} else {
-		// retry on google server errors
-		var gerr *googleapi.Error
-		if errors.As(err, &gerr) && gerr.Code >= 500 && remainingRetryCount > 0 {
-			time.Sleep(time.Duration(sleepSecondsBeforeRetry) * time.Second) // NOTE: sleep before retrying
-
-			return c.generate(ctx, remainingRetryCount-1, prompt, files...)
-		}
 	}
-
 	return generated, err
 }
 
