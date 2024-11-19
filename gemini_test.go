@@ -15,7 +15,7 @@ func TestGemini(t *testing.T) {
 		client := NewClient(googleAIAPIKey, nil)
 
 		// generate
-		if generated, err := client.generate(context.TODO(), "Summarize the content of the following url: https://github.com/meinside/rss-feeds-go"); err != nil {
+		if generated, err := client.generate(context.TODO(), 0, "Summarize the content of the following url: https://github.com/meinside/rss-feeds-go"); err != nil {
 			t.Errorf("failed to generate with gemini: %s", err)
 		} else {
 			log.Printf(">>> generated: %s", generated)
