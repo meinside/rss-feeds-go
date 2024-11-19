@@ -217,7 +217,7 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 		if isTextFormattableContent(contentType) { // use text prompt
 			prompt := fmt.Sprintf(summarizeURLPromptFormat, c.desiredLanguage, string(fetched))
 
-			if summarized, err = c.generate(ctx, maxRetryCount, prompt); err == nil {
+			if summarized, err = c.generate(ctx, prompt); err == nil {
 				return summarized, nil
 			} else {
 				if c.verbose {
@@ -227,7 +227,7 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 		} else if isFileContent(contentType) { // use prompt with files
 			prompt := fmt.Sprintf(summarizeFilePromptFormat, c.desiredLanguage)
 
-			if summarized, err = c.generate(ctx, maxRetryCount, prompt, fetched); err == nil {
+			if summarized, err = c.generate(ctx, prompt, fetched); err == nil {
 				return summarized, nil
 			} else {
 				if c.verbose {
