@@ -104,7 +104,7 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 
 	var fetched gf.RssFeedXml
 	for _, url := range c.feedsURLs {
-		v(c.verbose, "fetching rss feds from url: %s", url)
+		v(c.verbose, "fetching rss feeds from url: %s", url)
 
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
