@@ -287,7 +287,9 @@ func (c *dbCache) DeleteOlderThan1Month() {
 	if result.Error != nil {
 		log.Printf("failed to delete cached items older than 1 month: %s", result.Error)
 	} else if result.RowsAffected > 0 {
-		log.Printf("[verbose] dbCache - deleted %d cached items", result.RowsAffected)
+		if c.verbose {
+			log.Printf("[verbose] dbCache - deleted %d cached items", result.RowsAffected)
+		}
 	}
 }
 
