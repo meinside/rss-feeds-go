@@ -39,7 +39,7 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 	ctx, cancel := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
 	defer cancel()
 
-	gtc, err := gt.NewClient(c.googleAIModel, c.googleAIAPIKey)
+	gtc, err := gt.NewClient(c.googleAIAPIKey, c.googleAIModel)
 	if err != nil {
 		return "", fmt.Errorf("error initializing gemini-things client: %s", err)
 	}
