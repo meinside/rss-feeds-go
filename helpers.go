@@ -47,15 +47,20 @@ func errorString(err error) (error string) {
 	}
 }
 
+// print verbose message
+func v(verbose bool, format string, v ...any) {
+	if verbose {
+		log.Printf("[verbose] %s", fmt.Sprintf(format, v...))
+	}
+}
+
 // get content type from given url with HTTP GET
 func getContentType(url string, verbose bool) (contentType string, err error) {
 	client := &http.Client{
 		Timeout: time.Duration(fetchURLTimeoutSeconds) * time.Second,
 	}
 
-	if verbose {
-		log.Printf("[verbose] fetching head from url: %s", url)
-	}
+	v(verbose, "fetching head from url: %s", url)
 
 	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
@@ -77,9 +82,7 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 		Timeout: time.Duration(fetchURLTimeoutSeconds) * time.Second,
 	}
 
-	if verbose {
-		log.Printf("[verbose] fetching from url: %s", url)
-	}
+	v(verbose, "fetching contents from url: %s", url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -95,9 +98,7 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 
 	contentType = resp.Header.Get("Content-Type")
 
-	if verbose {
-		log.Printf("[verbose] fetched '%s' from url: %s", contentType, url)
-	}
+	v(verbose, "fetched '%s' from url: %s", contentType, url)
 
 	if resp.StatusCode == 200 {
 		if isTextFormattableContent(contentType) { // then format as text prompt
@@ -149,9 +150,7 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 	}
 
 	/*
-		if verbose {
-			log.Printf("[verbose] fetched body =\n%s\n", body)
-		}
+		v(verbose, "fetched body = \n%s\n", body)
 	*/
 
 	return content, contentType, err
