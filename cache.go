@@ -63,9 +63,7 @@ type memCache struct {
 
 // Exists checks for the existence of `id` in the cache.
 func (c *memCache) Exists(guid string) bool {
-	if c.verbose {
-		log.Printf("[verbose] memCache - checking existence of cached item with guid: %s", guid)
-	}
+	v(c.verbose, "memCache - checking existence of cached item with guid: %s", guid)
 
 	_, exists := c.items[guid]
 
@@ -74,9 +72,7 @@ func (c *memCache) Exists(guid string) bool {
 
 // Save saves `id` to the cache.
 func (c *memCache) Save(item feeds.RssItem, summary string) {
-	if c.verbose {
-		log.Printf("[verbose] memCache - saving item to cache: %s", item.Title)
-	}
+	v(c.verbose, "memCache - saving item to cache: %s", item.Title)
 
 	c.items[item.Guid.Id] = CachedItem{
 		Title:       item.Title,
@@ -93,9 +89,7 @@ func (c *memCache) Save(item feeds.RssItem, summary string) {
 
 // Fetch fetches the cached item with given `guid`.
 func (c *memCache) Fetch(guid string) *CachedItem {
-	if c.verbose {
-		log.Printf("[verbose] memCache - fetching cached item with guid: %s", guid)
-	}
+	v(c.verbose, "memCache - fetching cached item with guid: %s", guid)
 
 	if v, exists := c.items[guid]; exists {
 		return &v
@@ -105,9 +99,7 @@ func (c *memCache) Fetch(guid string) *CachedItem {
 
 // MarkAsRead marks a cached item as read.
 func (c *memCache) MarkAsRead(guid string) {
-	if c.verbose {
-		log.Printf("[verbose] memCache - marking cached item with guid: %s as read", guid)
-	}
+	v(c.verbose, "memCache - marking cached item with guid: %s as read", guid)
 
 	if v, exists := c.items[guid]; exists {
 		// overwrite it
@@ -127,9 +119,7 @@ func (c *memCache) MarkAsRead(guid string) {
 
 // List lists all cached items.
 func (c *memCache) List(includeItemsMarkedAsRead bool) []CachedItem {
-	if c.verbose {
-		log.Printf("[verbose] memCache - listing cached items with includeItemsMarkedAsRead = %v", includeItemsMarkedAsRead)
-	}
+	v(c.verbose, "memCache - listing cached items with includeItemsMarkedAsRead = %v", includeItemsMarkedAsRead)
 
 	all := []CachedItem{}
 	for _, v := range c.items {
@@ -146,9 +136,7 @@ func (c *memCache) List(includeItemsMarkedAsRead bool) []CachedItem {
 
 // DeleteOlderThan1Month deletes cached items which are older than 1 month.
 func (c *memCache) DeleteOlderThan1Month() {
-	if c.verbose {
-		log.Printf("[verbose] memCache - deleting cached items older than 1 month")
-	}
+	v(c.verbose, "memCache - deleting cached items older than 1 month")
 
 	maps.DeleteFunc(c.items, func(_ string, v CachedItem) bool {
 		return v.CreatedAt.Before(time.Now().Add(-30 * 24 * time.Hour))
@@ -181,9 +169,7 @@ type dbCache struct {
 
 // Exists checks for the existence of `id` in the cache.
 func (c *dbCache) Exists(guid string) (exists bool) {
-	if c.verbose {
-		log.Printf("[verbose] dbCache - checking existence of cached item with guid: %s", guid)
-	}
+	v(c.verbose, "dbCache - checking existence of cached item with guid: %s", guid)
 
 	err := c.db.Model(&CachedItem{}).Where("guid = ?", guid).Select("count(*) > 0").Find(&exists).Error
 	if err == nil {
@@ -197,9 +183,7 @@ func (c *dbCache) Exists(guid string) (exists bool) {
 
 // Save saves `id` to the cache.
 func (c *dbCache) Save(item feeds.RssItem, summary string) {
-	if c.verbose {
-		log.Printf("[verbose] dbCache - saving item to cache: %s", item.Title)
-	}
+	v(c.verbose, "dbCache - saving item to cache: %s", item.Title)
 
 	cached := CachedItem{
 		Title:       item.Title,
@@ -225,9 +209,7 @@ func (c *dbCache) Save(item feeds.RssItem, summary string) {
 
 // Fetch fetches the cached item with given `guid`.
 func (c *dbCache) Fetch(guid string) *CachedItem {
-	if c.verbose {
-		log.Printf("[verbose] dbCache - fetching cached item with guid: %s", guid)
-	}
+	v(c.verbose, "dbCache - fetching cached item with guid: %s", guid)
 
 	var cached CachedItem
 	err := c.db.Limit(1).Model(&CachedItem{}).Find(&cached).Where("guid = ?", guid).Error
@@ -240,9 +222,7 @@ func (c *dbCache) Fetch(guid string) *CachedItem {
 
 // MarkAsRead marks a cached item as read.
 func (c *dbCache) MarkAsRead(guid string) {
-	if c.verbose {
-		log.Printf("[verbose] dbCache - marking cached item with guid: %s as read", guid)
-	}
+	v(c.verbose, "dbCache - marking cached item with guid: %s as read", guid)
 
 	result := c.db.Model(&CachedItem{}).Where("guid = ?", guid).Update("marked_as_read", true)
 	if result.RowsAffected != 1 {
@@ -257,9 +237,7 @@ func (c *dbCache) MarkAsRead(guid string) {
 //
 // NOTE: when including items marked as read, the count will be limited to `listLimit`.
 func (c *dbCache) List(includeItemsMarkedAsRead bool) (items []CachedItem) {
-	if c.verbose {
-		log.Printf("[verbose] dbCache - listing cached items with includeItemsMarkedAsRead = %v", includeItemsMarkedAsRead)
-	}
+	v(c.verbose, "dbCache - listing cached items with includeItemsMarkedAsRead = %v", includeItemsMarkedAsRead)
 
 	tx := c.db.Model(&CachedItem{})
 	if !includeItemsMarkedAsRead {
@@ -279,17 +257,13 @@ func (c *dbCache) List(includeItemsMarkedAsRead bool) (items []CachedItem) {
 
 // DeleteOlderThan1Month deletes cached items which are older than 1 month.
 func (c *dbCache) DeleteOlderThan1Month() {
-	if c.verbose {
-		log.Printf("[verbose] dbCache - deleting cached items older than 1 month")
-	}
+	v(c.verbose, "dbCache - deleting cached items older than 1 month")
 
 	result := c.db.Where("created_at < ?", time.Now().Add(-30*24*time.Hour)).Delete(&CachedItem{})
 	if result.Error != nil {
 		log.Printf("failed to delete cached items older than 1 month: %s", result.Error)
 	} else if result.RowsAffected > 0 {
-		if c.verbose {
-			log.Printf("[verbose] dbCache - deleted %d cached items", result.RowsAffected)
-		}
+		v(c.verbose, "dbCache - deleted %d cached items", result.RowsAffected)
 	}
 }
 

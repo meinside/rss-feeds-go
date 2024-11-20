@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -105,9 +104,7 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 
 	var fetched gf.RssFeedXml
 	for _, url := range c.feedsURLs {
-		if c.verbose {
-			log.Printf("[verbose] fetching rss feeds from url: %s", url)
-		}
+		v(c.verbose, "fetching rss feds from url: %s", url)
 
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -127,24 +124,20 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 					strings.HasPrefix(contentType, "application/rss+xml") {
 					if bytes, err := io.ReadAll(resp.Body); err == nil {
 						if err := xml.Unmarshal(bytes, &fetched); err == nil {
-							if c.verbose {
-								log.Printf("[verbose] fetched %d item(s)", len(fetched.Channel.Items))
-							}
+							v(c.verbose, "fetched %d item(s)", len(fetched.Channel.Items))
 
 							if ignoreAlreadyCached {
 								// delete if it already exists in the cache
 								fetched.Channel.Items = slices.DeleteFunc(fetched.Channel.Items, func(item *gf.RssItem) bool {
 									exists := c.cache.Exists(item.Guid.Id)
-									if c.verbose && exists {
-										log.Printf("[verbose] ignoring: '%s' (%s)", item.Title, item.Guid.Id)
+									if exists {
+										v(c.verbose, "ignoring: '%s' (%s)", item.Title, item.Guid.Id)
 									}
 									return exists
 								})
 							}
 
-							if c.verbose {
-								log.Printf("[verbose] returning %d item(s)", len(fetched.Channel.Items))
-							}
+							v(c.verbose, "returning %d item(s)", len(fetched.Channel.Items))
 
 							feeds = append(feeds, *fetched.Channel)
 						} else {
@@ -208,9 +201,7 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 	ctx, cancel := context.WithTimeout(context.TODO(), summarizeTimeoutSeconds*time.Second)
 	defer cancel()
 
-	if c.verbose {
-		log.Printf("[verbose] summarizing content of url: %s", url)
-	}
+	v(c.verbose, "summarizing content of url: %s", url)
 
 	var fetched []byte
 	var contentType string
@@ -221,9 +212,7 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 			if summarized, err = c.generate(ctx, prompt); err == nil {
 				return summarized, nil
 			} else {
-				if c.verbose {
-					log.Printf("[verbose] failed to generate summary with prompt: '%s', error: %s", prompt, errorString(err))
-				}
+				v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, errorString(err))
 			}
 		} else if isFileContent(contentType) { // use prompt with files
 			prompt := fmt.Sprintf(summarizeFilePromptFormat, c.desiredLanguage)
@@ -231,9 +220,7 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 			if summarized, err = c.generate(ctx, prompt, fetched); err == nil {
 				return summarized, nil
 			} else {
-				if c.verbose {
-					log.Printf("[verbose] failed to generate summary with prompt and file: '%s', error: %s", prompt, errorString(err))
-				}
+				v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, errorString(err))
 			}
 		} else {
 			err = fmt.Errorf("not a summarizable content type: %s", contentType)
@@ -264,9 +251,7 @@ func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.
 
 	// retry if needed
 	if err != nil && remainingRetryCount > 0 {
-		if c.verbose {
-			log.Printf("[verbose] retrying fetching from url '%s' (remaining count: %d)", url, remainingRetryCount)
-		}
+		v(c.verbose, "retrying fetching from url '%s' (remaining count: %d)", url, remainingRetryCount)
 
 		return c.fetch(remainingRetryCount-1, url, urlScrapper...)
 	}
