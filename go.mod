@@ -7,7 +7,7 @@ require (
 	github.com/google/generative-ai-go v0.18.0
 	github.com/gorilla/feeds v1.2.0
 	github.com/meinside/gemini-things-go v0.1.14
-	github.com/meinside/simple-scrapper-go v0.0.6
+	github.com/meinside/simple-scrapper-go v0.0.7
 	github.com/tailscale/hujson v0.0.0-20241010212012-29efb4a0184b
 	google.golang.org/api v0.209.0
 	gorm.io/driver/sqlite v1.5.6
