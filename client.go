@@ -256,6 +256,13 @@ func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.
 		return c.fetch(remainingRetryCount-1, url, urlScrapper...)
 	}
 
+	// if all retries failed with urlScrapper, try without it
+	if err != nil && remainingRetryCount == 0 && len(urlScrapper) > 0 {
+		v(c.verbose, "fetching from url '%s' without url scrapper as a last try", url)
+
+		scrapped, contentType, err = fetchURLContent(url, c.verbose)
+	}
+
 	return scrapped, contentType, err
 }
 
