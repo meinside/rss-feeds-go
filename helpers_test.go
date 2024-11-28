@@ -23,8 +23,9 @@ func TestHelpers(t *testing.T) {
 
 	// test `decorateHTML`
 	for original, expected := range map[string]string{
-		"line 1\nline 2\n\nlast line\n":           "line 1<br>line 2<br><br>last line<br>",
-		"following **text** should be bolded! **": "following <b>text</b> should be bolded! **",
+		"line 1\nline 2\n\nlast line\n":                     "line 1<br>line 2<br><br>last line<br>",
+		"following **text** should be bolded! **":           "following <b>text</b> should be bolded! **",
+		"text with <html tags> should be **escaped** first": "text with &lt;html tags&gt; should be <b>escaped</b> first",
 	} {
 		if decorated := decorateHTML(original); decorated != expected {
 			t.Errorf("expected decorated html: '%s' vs actual: '%s'", expected, decorated)
