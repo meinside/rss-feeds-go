@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -224,6 +225,9 @@ func redactItems(items []CachedItem, baddies []string) []CachedItem {
 
 // decorate given `body` as HTML
 func decorateHTML(body string) string {
+	// remove html tags from original generated content
+	body = html.EscapeString(body)
+
 	// convert "\n" to "<br>"
 	body = strings.ReplaceAll(body, "\n", "<br>")
 
