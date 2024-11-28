@@ -174,7 +174,7 @@ func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed, urlScrapper ...*ssg.
 			summarized, err := c.summarize(item.Link, urlScrapper...)
 			if err != nil {
 				// prepend error text to the original content
-				summarized = fmt.Sprintf("<b>%s</b>\n\n%s", summarized, item.Description)
+				summarized = fmt.Sprintf("**%s**\n\n%s", summarized, item.Description)
 
 				errs = append(errs, err)
 			}
@@ -295,6 +295,7 @@ func (c *Client) PublishXML(title, link, description, author, email string, item
 		Created:     time.Now(),
 	}
 
+	// drop items without summary
 	items = slices.DeleteFunc(items, func(item CachedItem) bool {
 		return len(item.Summary) <= 0
 	})
