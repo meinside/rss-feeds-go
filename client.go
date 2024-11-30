@@ -25,6 +25,8 @@ const (
 	defaultDesiredLanguage          = "English"
 
 	maxRetryCount = 3
+
+	errorPrefix = `Summary failed with error`
 )
 
 // Client struct
@@ -227,7 +229,8 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 		}
 	}
 
-	return fmt.Sprintf("Summary failed with error: %s", errorString(err)), err
+	// return error message
+	return fmt.Sprintf("%s: %s", errorPrefix, errorString(err)), err
 }
 
 // fetch url content with or without url scrapper
