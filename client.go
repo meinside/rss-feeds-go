@@ -167,6 +167,8 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 }
 
 // SummarizeAndCacheFeeds summarizes given feeds items and caches them.
+//
+// If summary fails, the original content prepended with the error message will be cached.
 func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed, urlScrapper ...*ssg.Scrapper) (err error) {
 	errs := []error{}
 
@@ -307,10 +309,14 @@ func (c *Client) PublishXML(title, link, description, author, email string, item
 	for _, item := range items {
 		content := decorateHTML(item.Summary)
 
-		if len(item.Comments) > 0 {
-			content += `<br><br>` + fmt.Sprintf(`Comments: <a href="%[1]s">%[1]s</a>`, item.Comments)
-		} else {
-			content += `<br><br>` + fmt.Sprintf(`GUID: <a href="%[1]s">%[1]s</a>`, item.GUID)
+		// NOTE: if the summary was not successful, it is a concatenated string of the error message and original content
+		if !isError(item.Summary) {
+			// if it was a successful summary, append comments or GUID of the original content
+			if len(item.Comments) > 0 {
+				content += `<br><br>` + fmt.Sprintf(`Comments: <a href="%[1]s">%[1]s</a>`, item.Comments)
+			} else {
+				content += `<br><br>` + fmt.Sprintf(`GUID: <a href="%[1]s">%[1]s</a>`, item.GUID)
+			}
 		}
 
 		feedItem := feeds.Item{
