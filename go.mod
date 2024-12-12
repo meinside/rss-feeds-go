@@ -6,7 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.10.0
 	github.com/google/generative-ai-go v0.19.0
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.1.16
+	github.com/meinside/gemini-things-go v0.1.17
 	github.com/meinside/simple-scrapper-go v0.0.8
 	github.com/tailscale/hujson v0.0.0-20241010212012-29efb4a0184b
 	google.golang.org/api v0.211.0
@@ -43,7 +43,7 @@ require (
 	go.opentelemetry.io/otel v1.32.0 // indirect
 	go.opentelemetry.io/otel/metric v1.32.0 // indirect
 	go.opentelemetry.io/otel/trace v1.32.0 // indirect
-	golang.org/x/crypto v0.30.0 // indirect
+	golang.org/x/crypto v0.31.0 // indirect
 	golang.org/x/net v0.32.0 // indirect
 	golang.org/x/oauth2 v0.24.0 // indirect
 	golang.org/x/sync v0.10.0 // indirect
