@@ -225,7 +225,7 @@ func redactItems(items []CachedItem, baddies []string) []CachedItem {
 
 // check if given body string contains error prefix
 func isError(body string) bool {
-	return strings.Contains(body, errorPrefix)
+	return strings.Contains(body, ErrorPrefixSummaryFailedWithError)
 }
 
 // decorate given `body` as HTML
