@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/feeds"
 	gf "github.com/gorilla/feeds"
 
 	ssg "github.com/meinside/simple-scrapper-go"
@@ -25,8 +24,10 @@ const (
 	defaultDesiredLanguage          = "English"
 
 	maxRetryCount = 3
+)
 
-	errorPrefix = `Summary failed with error`
+const (
+	ErrorPrefixSummaryFailedWithError = `Summary failed with error`
 )
 
 // Client struct
@@ -70,7 +71,7 @@ func NewClientWithDB(googleAIAPIKey string, feedsURLs []string, dbFilepath strin
 			summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
 		}, nil
 	} else {
-		return nil, fmt.Errorf("Failed to create a client with DB: %s", err)
+		return nil, fmt.Errorf("failed to create a client with DB: %s", err)
 	}
 }
 
@@ -232,7 +233,7 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 	}
 
 	// return error message
-	return fmt.Sprintf("%s: %s", errorPrefix, errorString(err)), err
+	return fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, errorString(err)), err
 }
 
 // fetch url content with or without url scrapper
@@ -292,11 +293,11 @@ func (c *Client) DeleteOldCachedItems() {
 
 // PublishXML returns XML bytes of given cached items.
 func (c *Client) PublishXML(title, link, description, author, email string, items []CachedItem) (bytes []byte, err error) {
-	feed := &feeds.Feed{
+	feed := &gf.Feed{
 		Title:       title,
-		Link:        &feeds.Link{Href: link},
+		Link:        &gf.Link{Href: link},
 		Description: description,
-		Author:      &feeds.Author{Name: author, Email: email},
+		Author:      &gf.Author{Name: author, Email: email},
 		Created:     time.Now(),
 	}
 
@@ -305,7 +306,7 @@ func (c *Client) PublishXML(title, link, description, author, email string, item
 		return len(item.Summary) <= 0
 	})
 
-	var feedItems []*feeds.Item
+	var feedItems []*gf.Item
 	for _, item := range items {
 		content := decorateHTML(item.Summary)
 
@@ -319,10 +320,10 @@ func (c *Client) PublishXML(title, link, description, author, email string, item
 			}
 		}
 
-		feedItem := feeds.Item{
+		feedItem := gf.Item{
 			Id:          item.GUID,
 			Title:       item.Title,
-			Link:        &feeds.Link{Href: item.Link},
+			Link:        &gf.Link{Href: item.Link},
 			Description: item.Description,
 			Content:     content,
 			Created:     item.CreatedAt,
@@ -333,7 +334,7 @@ func (c *Client) PublishXML(title, link, description, author, email string, item
 	}
 	feed.Items = feedItems
 
-	rssFeed := (&feeds.Rss{
+	rssFeed := (&gf.Rss{
 		Feed: feed,
 	}).RssFeed()
 
