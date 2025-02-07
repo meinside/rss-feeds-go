@@ -12,6 +12,7 @@ import (
 	"time"
 
 	gf "github.com/gorilla/feeds"
+	"google.golang.org/api/googleapi"
 
 	ssg "github.com/meinside/simple-scrapper-go"
 )
@@ -71,7 +72,7 @@ func NewClientWithDB(googleAIAPIKey string, feedsURLs []string, dbFilepath strin
 			summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
 		}, nil
 	} else {
-		return nil, fmt.Errorf("failed to create a client with DB: %s", err)
+		return nil, fmt.Errorf("failed to create a client with DB: %w", err)
 	}
 }
 
@@ -111,7 +112,7 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %s", err)
+			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
 		req.Header.Set("User-Agent", fakeUserAgent)
 		req.Header.Set("Content-Type", "text/xml;charset=UTF-8")
@@ -144,19 +145,19 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 
 							feeds = append(feeds, *fetched.Channel)
 						} else {
-							errs = append(errs, fmt.Errorf("failed to parse rss feeds from %s: %s", url, err))
+							errs = append(errs, fmt.Errorf("failed to parse rss feeds from '%s': %w", url, err))
 						}
 					} else {
-						errs = append(errs, fmt.Errorf("failed to read '%s' document from %s: %s", contentType, url, err))
+						errs = append(errs, fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err))
 					}
 				} else {
-					errs = append(errs, fmt.Errorf("content type '%s' not supported for url: %s", contentType, url))
+					errs = append(errs, fmt.Errorf("content type '%s' not supported for url: '%s'", contentType, url))
 				}
 			} else {
-				errs = append(errs, fmt.Errorf("http error %d from url: %s", resp.StatusCode, url))
+				errs = append(errs, fmt.Errorf("http error %d from url: '%s'", resp.StatusCode, url))
 			}
 		} else {
-			errs = append(errs, fmt.Errorf("failed to fetch rss feeds from url: %s", err))
+			errs = append(errs, fmt.Errorf("failed to fetch rss feeds from url: %w", err))
 		}
 	}
 
@@ -170,14 +171,28 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 // SummarizeAndCacheFeeds summarizes given feeds items and caches them.
 //
 // If summary fails, the original content prepended with the error message will be cached.
+//
+// If there was an error with quota (HTTP 429), it will return immediately.
+// (remaining feed items can be retried later)
 func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed, urlScrapper ...*ssg.Scrapper) (err error) {
 	errs := []error{}
 
+outer:
 	for _, f := range feeds {
 		for i, item := range f.Items {
 			// summarize,
 			summarized, err := c.summarize(item.Link, urlScrapper...)
 			if err != nil {
+				// NOTE: skip remaining feed items if err is http 429 ('RESOURCE_EXHAUSTED')
+				var gerr *googleapi.Error
+				if errors.As(err, &gerr) && gerr.Code == 429 {
+					v(c.verbose, "skipping remaining feed items due to quota limit")
+
+					errs = append(errs, err)
+
+					break outer
+				}
+
 				// prepend error text to the original content
 				summarized = fmt.Sprintf("%s\n\n%s", summarized, item.Description)
 
