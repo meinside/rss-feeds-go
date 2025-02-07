@@ -26,14 +26,9 @@ func TestHelpers(t *testing.T) {
 		"line 1\nline 2\n\nlast line\n":                     "line 1<br>line 2<br><br>last line<br>",
 		"following **text** should be bolded! **":           "following <b>text</b> should be bolded! **",
 		"text with <html tags> should be **escaped** first": "text with &lt;html tags&gt; should be <b>escaped</b> first",
-		`**Summary failed with error: googleapi error: [{
-  "error": {
-    "code": 503,
-    "message": "The model is overloaded. Please try again later.",
-    "status": "UNAVAILABLE"
-  }
-}
-]**`: `<b>Summary failed with error: googleapi error: [{<br>  "error": {<br>    "code": 503,<br>    "message": "The model is overloaded. Please try again later.",<br>    "status": "UNAVAILABLE"<br>  }<br>}<br>]</b>`,
+		`**bold text
+over multiple
+lines**`: `<b>bold text<br>over multiple<br>lines</b>`,
 	} {
 		if decorated := decorateHTML(original); decorated != expected {
 			t.Errorf("expected decorated html: '%s' vs actual: '%s'", expected, decorated)
