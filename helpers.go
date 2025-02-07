@@ -65,12 +65,12 @@ func getContentType(url string, verbose bool) (contentType string, err error) {
 
 	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
-		return "", fmt.Errorf("failed to create request: %s", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch head from url: %s", err)
+		return "", fmt.Errorf("failed to fetch head from url: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -87,13 +87,13 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, contentType, fmt.Errorf("failed to create request: %s", err)
+		return nil, contentType, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("User-Agent", fakeUserAgent)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, contentType, fmt.Errorf("failed to fetch contents from url: %s", err)
+		return nil, contentType, fmt.Errorf("failed to fetch contents from url: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -114,7 +114,7 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(doc.Text())))
 				} else {
 					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this HTML document."))
-					err = fmt.Errorf("failed to read '%s' document from %s: %s", contentType, url, err)
+					err = fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err)
 				}
 			} else if strings.HasPrefix(contentType, "text/") {
 				var bytes []byte
@@ -123,7 +123,7 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(string(bytes)))) // NOTE: removing redundant empty lines
 				} else {
 					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this document."))
-					err = fmt.Errorf("failed to read '%s' document from %s: %s", contentType, url, err)
+					err = fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err)
 				}
 			} else if strings.HasPrefix(contentType, "application/json") {
 				var bytes []byte
@@ -131,23 +131,23 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, string(bytes)))
 				} else {
 					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this document."))
-					err = fmt.Errorf("failed to read '%s' document from %s: %s", contentType, url, err)
+					err = fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err)
 				}
 			} else {
 				content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType)))
-				err = fmt.Errorf("content type '%s' not supported for url: %s", contentType, url)
+				err = fmt.Errorf("content type '%s' not supported for url: '%s'", contentType, url)
 			}
 		} else if isFileContent(contentType) {
 			if content, err = io.ReadAll(resp.Body); err != nil { // then read bytes as a file
-				err = fmt.Errorf("failed to read bytes from url '%s': %s", url, err)
+				err = fmt.Errorf("failed to read bytes from url '%s': %w", url, err)
 			}
 		} else {
 			content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType)))
-			err = fmt.Errorf("content type '%s' not supported for url: %s", contentType, url)
+			err = fmt.Errorf("content type '%s' not supported for url: '%s'", contentType, url)
 		}
 	} else {
 		content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("HTTP Error %d", resp.StatusCode)))
-		err = fmt.Errorf("http error %d from url: %s", resp.StatusCode, url)
+		err = fmt.Errorf("http error %d from url: '%s'", resp.StatusCode, url)
 	}
 
 	/*
