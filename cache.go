@@ -70,7 +70,7 @@ func (c *memCache) Exists(guid string) bool {
 	return exists
 }
 
-// Save saves `id` to the cache.
+// Save saves given item to the cache.
 func (c *memCache) Save(item feeds.RssItem, summary string) {
 	v(c.verbose, "memCache - saving item to cache: %s", item.Title)
 
@@ -181,7 +181,7 @@ func (c *dbCache) Exists(guid string) (exists bool) {
 	return false
 }
 
-// Save saves `id` to the cache.
+// Save saves given item to the cache.
 func (c *dbCache) Save(item feeds.RssItem, summary string) {
 	v(c.verbose, "dbCache - saving item to cache: %s", item.Title)
 
