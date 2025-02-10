@@ -12,8 +12,8 @@ import (
 	"time"
 
 	gf "github.com/gorilla/feeds"
-	"google.golang.org/api/googleapi"
 
+	gt "github.com/meinside/gemini-things-go"
 	ssg "github.com/meinside/simple-scrapper-go"
 )
 
@@ -184,8 +184,7 @@ outer:
 			summarized, err := c.summarize(item.Link, urlScrapper...)
 			if err != nil {
 				// NOTE: skip remaining feed items if err is http 429 ('RESOURCE_EXHAUSTED')
-				var gerr *googleapi.Error
-				if errors.As(err, &gerr) && gerr.Code == 429 {
+				if gt.IsQuotaExceeded(err) {
 					v(c.verbose, "skipping remaining feed items due to quota limit")
 
 					errs = append(errs, err)
