@@ -183,9 +183,11 @@ outer:
 			// summarize,
 			summarized, err := c.summarize(item.Link, urlScrapper...)
 			if err != nil {
-				// NOTE: skip remaining feed items if err is http 429 ('RESOURCE_EXHAUSTED')
-				if gt.IsQuotaExceeded(err) {
-					v(c.verbose, "skipping remaining feed items due to quota limit")
+				// NOTE: skip remaining feed items if err is
+				// http 429 ('RESOURCE_EXHAUSTED') or
+				// http 503 ('The model is overloaded. Please try again later.')
+				if gt.IsQuotaExceeded(err) || gt.IsModelOverloaded(err) {
+					v(c.verbose, "skipping remaining feed items due to quota limit or overloaded model")
 
 					errs = append(errs, err)
 
