@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultGoogleAIModel    = "gemini-1.5-flash-latest"
+	defaultGoogleAIModel    = "gemini-2.0-flash"
 	systemInstructionFormat = `You are a chat bot for summarizing contents retrieved from web sites or RSS feeds.
 
 Current datetime is %[1]s.
