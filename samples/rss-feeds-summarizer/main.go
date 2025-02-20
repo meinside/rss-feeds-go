@@ -9,10 +9,10 @@ import (
 const (
 	googleAIAPIKey = "abcdefghijklmnopqrstuvwxyz0123456789" // NOTE: change it to yours
 
-	googleAIModel   = "gemini-1.5-flash-latest"
+	googleAIModel   = "gemini-2.0-flash"
 	dbFilepath      = "./test.db"
 	desiredLanguage = "Korean"
-	//verbose         = false
+	// verbose         = false
 	verbose = true
 
 	noSummary = "<<< no summary >>>"
