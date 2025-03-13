@@ -1,15 +1,15 @@
 module github.com/meinside/rss-feeds-go
 
-go 1.23.1
+go 1.24.1
 
 require (
 	github.com/PuerkitoBio/goquery v1.10.2
-	github.com/google/generative-ai-go v0.19.0
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.1.36
-	github.com/meinside/simple-scrapper-go v0.0.11
+	github.com/meinside/gemini-things-go v0.2.0
+	github.com/meinside/simple-scrapper-go v0.0.12
 	github.com/tailscale/hujson v0.0.0-20250226034555-ec1d1c113d33
 	google.golang.org/api v0.225.0
+	google.golang.org/genai v0.5.0
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.25.12
 )
@@ -29,10 +29,13 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
+	github.com/google/generative-ai-go v0.19.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.5 // indirect
 	github.com/googleapis/gax-go/v2 v2.14.1 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/mattn/go-sqlite3 v1.14.24 // indirect
