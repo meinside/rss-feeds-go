@@ -8,7 +8,7 @@ import (
 	"time"
 
 	// google ai
-	"github.com/google/generative-ai-go/genai"
+	"google.golang.org/genai"
 
 	// my libraries
 	gt "github.com/meinside/gemini-things-go"
@@ -55,23 +55,28 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 		promptFiles[fmt.Sprintf("file %d", i+1)] = bytes.NewReader(file)
 	}
 
+	prompts := []gt.Prompt{gt.NewTextPrompt(prompt)}
+	for filename, file := range promptFiles {
+		prompts = append(prompts, gt.NewFilePrompt(filename, file))
+	}
+
 	// generate
 	var result *genai.GenerateContentResponse
-	if result, err = gtc.Generate(ctx, prompt, promptFiles, gt.NewGenerationOptions()); err == nil {
+	if result, err = gtc.Generate(ctx, prompts, gt.NewGenerationOptions()); err == nil {
 		if len(result.Candidates) > 0 {
 			candidate := result.Candidates[0]
 
 			if content := candidate.Content; content != nil {
 				for _, part := range content.Parts {
-					if text, ok := part.(genai.Text); ok { // (text)
-						generated += string(text)
+					if part.Text != "" {
+						generated += part.Text
 					} else {
 						err = fmt.Errorf("unsupported type of part from generation: %s", Prettify(part))
 					}
 				}
 			} else {
 				if candidate.FinishReason != genai.FinishReasonUnspecified {
-					err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason.String())
+					err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
 				} else {
 					err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
 				}
