@@ -5,7 +5,7 @@ go 1.24.1
 require (
 	github.com/PuerkitoBio/goquery v1.10.2
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.2.1
+	github.com/meinside/gemini-things-go v0.2.2
 	github.com/meinside/simple-scrapper-go v0.0.12
 	github.com/tailscale/hujson v0.0.0-20250226034555-ec1d1c113d33
 	google.golang.org/api v0.226.0
