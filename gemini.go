@@ -55,9 +55,9 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 		promptFiles[fmt.Sprintf("file %d", i+1)] = bytes.NewReader(file)
 	}
 
-	prompts := []gt.Prompt{gt.NewTextPrompt(prompt)}
+	prompts := []gt.Prompt{gt.PromptFromText(prompt)}
 	for filename, file := range promptFiles {
-		prompts = append(prompts, gt.NewFilePrompt(filename, file))
+		prompts = append(prompts, gt.PromptFromFile(filename, file))
 	}
 
 	// generate
