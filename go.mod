@@ -5,7 +5,7 @@ go 1.24.1
 require (
 	github.com/PuerkitoBio/goquery v1.10.2
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.2.2
+	github.com/meinside/gemini-things-go v0.2.3
 	github.com/meinside/simple-scrapper-go v0.0.12
 	github.com/tailscale/hujson v0.0.0-20250226034555-ec1d1c113d33
 	google.golang.org/api v0.226.0
@@ -22,7 +22,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	cloud.google.com/go/longrunning v0.6.6 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
-	github.com/deckarep/golang-set/v2 v2.7.0 // indirect
+	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.8 // indirect
 	github.com/go-jose/go-jose/v3 v3.0.4 // indirect

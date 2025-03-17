@@ -43,8 +43,9 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 	if err != nil {
 		return "", fmt.Errorf("error initializing gemini-things client: %w", err)
 	}
-	defer gtc.Close()
 	gtc.SetTimeout(generationTimeoutSeconds)
+	setCustomFileConverters(gtc)
+	defer gtc.Close()
 
 	// system instruction
 	gtc.SetSystemInstructionFunc(defaultSystemInstruction)
@@ -62,7 +63,11 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 
 	// generate
 	var result *genai.GenerateContentResponse
-	if result, err = gtc.Generate(ctx, prompts, gt.NewGenerationOptions()); err == nil {
+	if result, err = gtc.Generate(
+		ctx,
+		prompts,
+		gt.NewGenerationOptions(),
+	); err == nil {
 		if len(result.Candidates) > 0 {
 			candidate := result.Candidates[0]
 
@@ -91,4 +96,14 @@ func defaultSystemInstruction() string {
 	return fmt.Sprintf(systemInstructionFormat,
 		time.Now().Format("2006-01-02 15:04:05 (Mon) MST"),
 	)
+}
+
+// set custom file converters
+func setCustomFileConverters(gtc *gt.Client) {
+	gtc.SetFileConverter("application/xhtml+xml", func(bytes []byte) ([]byte, string, error) {
+		// do nothing but override the content type ("application/xhtml+xml" => "text/html")
+		return bytes, "text/html", nil
+	})
+
+	// TODO: add more converters here
 }
