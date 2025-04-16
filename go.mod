@@ -5,11 +5,11 @@ go 1.24.1
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.2.16
-	github.com/meinside/simple-scrapper-go v0.0.12
+	github.com/meinside/gemini-things-go v0.2.17
+	github.com/meinside/simple-scrapper-go v0.0.13
 	github.com/tailscale/hujson v0.0.0-20250226034555-ec1d1c113d33
 	google.golang.org/api v0.229.0
-	google.golang.org/genai v1.0.1-0.20250414203924-5b1ba864bd93
+	google.golang.org/genai v1.1.0
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.25.12
 )
@@ -33,7 +33,7 @@ require (
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
-	github.com/mattn/go-sqlite3 v1.14.27 // indirect
+	github.com/mattn/go-sqlite3 v1.14.28 // indirect
 	github.com/meinside/randomized-string-generator-go v0.0.1 // indirect
 	github.com/playwright-community/playwright-go v0.5101.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
