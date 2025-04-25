@@ -23,7 +23,7 @@ const (
 
 	rssPollerAgent = "Feedly/1.0"
 
-	//verbose         = false
+	// verbose         = false
 	verbose = true
 )
 
@@ -56,7 +56,7 @@ func main() {
 
 			// generate xml and serve it
 			if bytes, err := client.PublishXML(rssTitle, rssLink, rssDescription, rssAuthor, rssEmail, items); err == nil {
-				if _, err := io.WriteString(w, string(bytes)); err != nil {
+				if _, err := io.Writer.Write(w, bytes); err != nil {
 					log.Printf("# failed to write data: %s", err)
 				}
 			} else {

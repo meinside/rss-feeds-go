@@ -118,7 +118,9 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 		req.Header.Set("Content-Type", "text/xml;charset=UTF-8")
 
 		if resp, err := client.Do(req); err == nil {
-			defer resp.Body.Close()
+			defer func() {
+				_ = resp.Body.Close()
+			}()
 
 			if resp.StatusCode == 200 {
 				contentType := resp.Header.Get("Content-Type")
@@ -181,7 +183,7 @@ outer:
 	for _, f := range feeds {
 		for i, item := range f.Items {
 			// summarize,
-			summarized, err := c.summarize(item.Link, urlScrapper...)
+			translatedTitle, summarizedContent, err := c.summarize(item.Title, item.Link, urlScrapper...)
 			if err != nil {
 				// NOTE: skip remaining feed items if err is
 				// http 429 ('RESOURCE_EXHAUSTED') or
@@ -195,13 +197,13 @@ outer:
 				}
 
 				// prepend error text to the original content
-				summarized = fmt.Sprintf("%s\n\n%s", summarized, item.Description)
+				summarizedContent = fmt.Sprintf("%s\n\n%s", summarizedContent, item.Description)
 
 				errs = append(errs, err)
 			}
 
 			// cache, (or update)
-			c.cache.Save(*item, summarized)
+			c.cache.Save(*item, translatedTitle, summarizedContent)
 
 			// and sleep for a while
 			if i < len(f.Items)-1 {
@@ -218,7 +220,7 @@ outer:
 }
 
 // summarize the content of given `url`
-func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized string, err error) {
+func (c *Client) summarize(title, url string, urlScrapper ...*ssg.Scrapper) (translatedTitle, summarizedContent string, err error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), summarizeTimeoutSeconds*time.Second)
 	defer cancel()
 
@@ -228,18 +230,18 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 	var contentType string
 	if fetched, contentType, err = c.fetch(maxRetryCount, url, urlScrapper...); err == nil {
 		if isTextFormattableContent(contentType) { // use text prompt
-			prompt := fmt.Sprintf(summarizeURLPromptFormat, c.desiredLanguage, string(fetched))
+			prompt := fmt.Sprintf(summarizePromptFormat, c.desiredLanguage, title, string(fetched))
 
-			if summarized, err = c.generate(ctx, prompt); err == nil {
-				return summarized, nil
+			if translatedTitle, summarizedContent, err = c.generate(ctx, prompt); err == nil {
+				return
 			} else {
 				v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, errorString(err))
 			}
 		} else if isFileContent(contentType) { // use prompt with files
-			prompt := fmt.Sprintf(summarizeFilePromptFormat, c.desiredLanguage)
+			prompt := fmt.Sprintf(summarizeFilePromptFormat, c.desiredLanguage, title)
 
-			if summarized, err = c.generate(ctx, prompt, fetched); err == nil {
-				return summarized, nil
+			if translatedTitle, summarizedContent, err = c.generate(ctx, prompt, fetched); err == nil {
+				return
 			} else {
 				v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, errorString(err))
 			}
@@ -249,7 +251,7 @@ func (c *Client) summarize(url string, urlScrapper ...*ssg.Scrapper) (summarized
 	}
 
 	// return error message
-	return fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, errorString(err)), err
+	return title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, errorString(err)), err
 }
 
 // fetch url content with or without url scrapper
@@ -264,7 +266,7 @@ func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.
 
 		for _, v := range crawled {
 			// get the first (and the only one) value
-			scrapped = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, v))
+			scrapped = fmt.Appendf(nil, urlToTextFormat, url, contentType, v)
 			break
 		}
 	} else { // otherwise, use `fetchURLContent` function
