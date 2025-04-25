@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"time"
 
 	// google ai
@@ -15,37 +16,56 @@ import (
 )
 
 const (
-	defaultGoogleAIModel    = "gemini-2.0-flash"
-	systemInstructionFormat = `You are a chat bot for summarizing contents retrieved from web sites or RSS feeds.
+	defaultGoogleAIModel = "gemini-2.0-flash"
+
+	systemInstructionFormat = `You are a precise and useful agent for summarizing and translating contents retrieved from web sites or RSS feeds.
 
 Current datetime is %[1]s.
 
 Respond to user messages according to the following principles:
-- Do not repeat the user's request.
 - Be as accurate as possible.
 - Be as truthful as possible.
 - Be as comprehensive and informative as possible.
+- Try to keep the nuances of the original title and/or content as much as possible.
+- If the title is already in the same language, or too vague to be translated, just keep it as it is.
 `
-	summarizeURLPromptFormat = `Summarize the content of following <link></link> tag in %[1]s language:
+	summarizePromptFormat = `Summarize the content of following <content:link></content:link> tag in %[1]s language,
+and translate the title of the content in <content:title></content:title> tag into the same language
+referring to the summarized content.
 
-%[2]s`
-	summarizeFilePromptFormat = `Summarize the content of attached file(s) in %[1]s language.`
+<content:title>%[2]s</content:title>
+
+%[3]s`
+	summarizeFilePromptFormat = `Summarize the content of attached file(s) in %[1]s language,
+and translate the title of the content in <content:title></content:title> tag into the same language
+referring to the summarized content:
+
+<content:title>%[2]s</content:title>`
 
 	generationTimeoutSeconds = 60 // 1 minute
 )
 
 // generate with given things
-func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (generated string, err error) {
+func (c *Client) generate(
+	ctx context.Context,
+	prompt string,
+	files ...[]byte,
+) (translatedTitle, summarizedContent string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
 	defer cancel()
 
 	gtc, err := gt.NewClient(c.googleAIAPIKey, c.googleAIModel)
 	if err != nil {
-		return "", fmt.Errorf("error initializing gemini-things client: %w", err)
+		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
 	}
 	gtc.SetTimeout(generationTimeoutSeconds)
 	setCustomFileConverters(gtc)
-	defer gtc.Close()
+
+	defer func() {
+		if err := gtc.Close(); err != nil {
+			log.Printf("failed to close gemini-things client: %s", err)
+		}
+	}()
 
 	// system instruction
 	gtc.SetSystemInstructionFunc(defaultSystemInstruction)
@@ -61,22 +81,54 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 		prompts = append(prompts, gt.PromptFromFile(filename, file))
 	}
 
+	// set function call
+	options := genOptions()
+
 	// generate
 	var result *genai.GenerateContentResponse
 	if result, err = gtc.Generate(
 		ctx,
 		prompts,
-		gt.NewGenerationOptions(),
+		options,
 	); err == nil {
 		if len(result.Candidates) > 0 {
 			candidate := result.Candidates[0]
 
 			if content := candidate.Content; content != nil {
 				for _, part := range content.Parts {
-					if part.Text != "" {
-						generated += part.Text
-					} else {
-						err = fmt.Errorf("unsupported type of part from generation: %s", Prettify(part))
+					if part.FunctionCall != nil {
+						fn := part.FunctionCall
+
+						if fn.Name != fnNameTranslateTitleAndSummarizeContent {
+							err = fmt.Errorf("not an expected function name: '%s'", fn.Name)
+							break
+						} else {
+							// get trasnlated title
+							if arg, e := gt.FuncArg[string](fn.Args, fnParamNameTranslatedTitle); e == nil {
+								if arg != nil {
+									translatedTitle = *arg
+								} else {
+									err = fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
+									break
+								}
+							} else {
+								err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
+								break
+							}
+
+							// get summarized content
+							if arg, e := gt.FuncArg[string](fn.Args, fnParamNameSummarizedContent); e == nil {
+								if arg != nil {
+									summarizedContent = *arg
+								} else {
+									err = fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
+									break
+								}
+							} else {
+								err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
+								break
+							}
+						}
 					}
 				}
 			} else {
@@ -88,7 +140,61 @@ func (c *Client) generate(ctx context.Context, prompt string, files ...[]byte) (
 			}
 		}
 	}
-	return generated, err
+
+	return
+}
+
+const (
+	fnNameTranslateTitleAndSummarizeContent = "translateTitleAndSummarizeContent"
+	fnDescTranslateTitleAndSummarizeContent = `Summarize the given content and translate the title referring to the summarized content.`
+	fnParamNameTranslatedTitle              = "translatedTitle"
+	fnParamDescTranslatedTitle              = `Translated title of the content.`
+	fnParamNameSummarizedContent            = "summarizedContent"
+	fnParamDescSummarizedContent            = `Summarized content.`
+)
+
+// options for generation
+func genOptions() *gt.GenerationOptions {
+	options := gt.NewGenerationOptions()
+	options.Tools = []*genai.Tool{
+		{
+			FunctionDeclarations: []*genai.FunctionDeclaration{
+				{
+					Name:        fnNameTranslateTitleAndSummarizeContent,
+					Description: fnDescTranslateTitleAndSummarizeContent,
+					Parameters: &genai.Schema{
+						Type: genai.TypeObject,
+						Properties: map[string]*genai.Schema{
+							fnParamNameTranslatedTitle: {
+								Description: fnParamDescTranslatedTitle,
+								Type:        genai.TypeString,
+								Nullable:    genai.Ptr(false),
+							},
+							fnParamNameSummarizedContent: {
+								Description: fnParamDescSummarizedContent,
+								Type:        genai.TypeString,
+								Nullable:    genai.Ptr(false),
+							},
+						},
+						Required: []string{
+							fnParamNameTranslatedTitle,
+							fnParamNameSummarizedContent,
+						},
+					},
+				},
+			},
+		},
+	}
+	options.ToolConfig = &genai.ToolConfig{
+		FunctionCallingConfig: &genai.FunctionCallingConfig{
+			Mode: genai.FunctionCallingConfigModeAny,
+			AllowedFunctionNames: []string{
+				fnNameTranslateTitleAndSummarizeContent,
+			},
+		},
+	}
+
+	return options
 }
 
 // generate a default system instruction with given configuration

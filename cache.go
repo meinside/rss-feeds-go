@@ -24,7 +24,7 @@ const (
 // FeedsItemsCache is an interface of feeds items' cache
 type FeedsItemsCache interface {
 	Exists(guid string) bool
-	Save(item feeds.RssItem, summary string)
+	Save(item feeds.RssItem, title, summary string)
 	Fetch(guid string) *CachedItem
 	MarkAsRead(guid string)
 	List(includeItemsMarkedAsRead bool) []CachedItem
@@ -71,11 +71,12 @@ func (c *memCache) Exists(guid string) bool {
 }
 
 // Save saves given item to the cache.
-func (c *memCache) Save(item feeds.RssItem, summary string) {
-	v(c.verbose, "memCache - saving item to cache: %s", item.Title)
+func (c *memCache) Save(item feeds.RssItem, title, summary string) {
+	v(c.verbose, "memCache - saving item to cache: %s (%s)", item.Title, title)
 
 	c.items[item.Guid.Id] = CachedItem{
-		Title:       item.Title,
+		Title: title,
+
 		Link:        item.Link,
 		Comments:    item.Comments,
 		GUID:        item.Guid.Id,
@@ -182,11 +183,12 @@ func (c *dbCache) Exists(guid string) (exists bool) {
 }
 
 // Save saves given item to the cache.
-func (c *dbCache) Save(item feeds.RssItem, summary string) {
-	v(c.verbose, "dbCache - saving item to cache: %s", item.Title)
+func (c *dbCache) Save(item feeds.RssItem, title, summary string) {
+	v(c.verbose, "dbCache - saving item to cache: %s (%s)", item.Title, title)
 
 	cached := CachedItem{
-		Title:       item.Title,
+		Title: title,
+
 		Link:        item.Link,
 		Comments:    item.Comments,
 		GUID:        item.Guid.Id,
@@ -194,13 +196,17 @@ func (c *dbCache) Save(item feeds.RssItem, summary string) {
 		PublishDate: item.PubDate,
 		Description: item.Description,
 
-		Summary:      summary,
+		Summary: summary,
+
 		MarkedAsRead: false,
 	}
 
 	err := c.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "guid"}},
-		DoUpdates: clause.AssignmentColumns([]string{"summary"}),
+		Columns: []clause.Column{{Name: "guid"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"title",
+			"summary",
+		}),
 	}).Create(&cached).Error
 	if err != nil {
 		log.Printf("failed to upsert cached item: %s", err)
