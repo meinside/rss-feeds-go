@@ -125,9 +125,8 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 			if resp.StatusCode == 200 {
 				contentType := resp.Header.Get("Content-Type")
 
-				if strings.HasPrefix(contentType, "text/xml") ||
-					strings.HasPrefix(contentType, "application/xml") ||
-					strings.HasPrefix(contentType, "application/rss+xml") {
+				// check if `contentType` is supported,
+				if supportedContentType(contentType) {
 					if bytes, err := io.ReadAll(resp.Body); err == nil {
 						if err := xml.Unmarshal(bytes, &fetched); err == nil {
 							v(c.verbose, "fetched %d item(s)", len(fetched.Channel.Items))

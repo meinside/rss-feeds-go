@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,6 +27,18 @@ const (
 
 	redacted = "|REDACTED|"
 )
+
+// supported content types
+var _supportedContentTypes []string
+
+func init() {
+	_supportedContentTypes = []string{
+		"text/xml",
+		"application/xml",
+		"application/rss+xml",
+		"application/xhtml+xml",
+	}
+}
 
 // StandardizeJSON standardizes given JSON (JWCC) bytes.
 func StandardizeJSON(b []byte) ([]byte, error) {
@@ -258,4 +271,11 @@ func Prettify(v any) string {
 		return string(bytes)
 	}
 	return fmt.Sprintf("%+v", v)
+}
+
+// check if given `contentType` is supported or not
+func supportedContentType(contentType string) bool {
+	return slices.ContainsFunc(_supportedContentTypes, func(supported string) bool {
+		return strings.HasPrefix(contentType, supported)
+	})
 }
