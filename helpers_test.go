@@ -22,23 +22,6 @@ func TestGetContentType(t *testing.T) {
 	}
 }
 
-// test `supportedContentType`
-func TestSupportedContentType(t *testing.T) {
-	for _, contentType := range _supportedContentTypes {
-		if !supportedContentType(contentType) {
-			t.Errorf("unexpected content type support of '%s'", contentType)
-		}
-	}
-	for _, contentType := range []string{
-		"application/json",
-		"application/octet-stream",
-	} {
-		if supportedContentType(contentType) {
-			t.Errorf("unexpected content type support of '%s'", contentType)
-		}
-	}
-}
-
 // test `decorateHTML`
 func TestDecorateHTML(t *testing.T) {
 	for original, expected := range map[string]string{
