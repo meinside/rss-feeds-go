@@ -12,7 +12,7 @@ import (
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
 
-	"github.com/gorilla/feeds"
+	"github.com/mmcdole/gofeed"
 )
 
 const (
@@ -24,7 +24,7 @@ const (
 // FeedsItemsCache is an interface of feeds items' cache
 type FeedsItemsCache interface {
 	Exists(guid string) bool
-	Save(item feeds.RssItem, title, summary string)
+	Save(item gofeed.Item, title, summary string)
 	Fetch(guid string) *CachedItem
 	MarkAsRead(guid string)
 	List(includeItemsMarkedAsRead bool) []CachedItem
@@ -71,21 +71,35 @@ func (c *memCache) Exists(guid string) bool {
 }
 
 // Save saves given item to the cache.
-func (c *memCache) Save(item feeds.RssItem, title, summary string) {
+func (c *memCache) Save(item gofeed.Item, title, summary string) {
 	v(c.verbose, "memCache - saving item to cache: %s (%s)", item.Title, title)
 
-	c.items[item.Guid.Id] = CachedItem{
+	cached := CachedItem{
 		Title: title,
 
-		Link:        item.Link,
-		Comments:    item.Comments,
-		GUID:        item.Guid.Id,
-		Author:      item.Author,
-		PublishDate: item.PubDate,
+		GUID:        item.GUID,
 		Description: item.Description,
 
 		Summary: summary,
 	}
+	if len(item.Links) > 0 {
+		cached.Link = item.Links[0]
+		if len(item.Links) > 1 {
+			cached.Comments = item.Links[1]
+		}
+	}
+	if item.Author != nil {
+		if len(item.Author.Name) > 0 {
+			cached.Author = item.Author.Name
+		} else if len(item.Author.Email) > 0 {
+			cached.Author = item.Author.Email
+		}
+	}
+	if item.PublishedParsed != nil {
+		cached.PublishDate = item.PublishedParsed.Format(time.RFC3339)
+	}
+
+	c.items[item.GUID] = cached
 }
 
 // Fetch fetches the cached item with given `guid`.
@@ -183,22 +197,34 @@ func (c *dbCache) Exists(guid string) (exists bool) {
 }
 
 // Save saves given item to the cache.
-func (c *dbCache) Save(item feeds.RssItem, title, summary string) {
+func (c *dbCache) Save(item gofeed.Item, title, summary string) {
 	v(c.verbose, "dbCache - saving item to cache: %s (%s)", item.Title, title)
 
 	cached := CachedItem{
 		Title: title,
 
-		Link:        item.Link,
-		Comments:    item.Comments,
-		GUID:        item.Guid.Id,
-		Author:      item.Author,
-		PublishDate: item.PubDate,
+		GUID:        item.GUID,
 		Description: item.Description,
 
 		Summary: summary,
 
 		MarkedAsRead: false,
+	}
+	if len(item.Links) > 0 {
+		cached.Link = item.Links[0]
+		if len(item.Links) > 1 {
+			cached.Comments = item.Links[1]
+		}
+	}
+	if item.Author != nil {
+		if len(item.Author.Name) > 0 {
+			cached.Author = item.Author.Name
+		} else if len(item.Author.Email) > 0 {
+			cached.Author = item.Author.Email
+		}
+	}
+	if item.PublishedParsed != nil {
+		cached.PublishDate = item.PublishedParsed.Format(time.RFC3339)
 	}
 
 	err := c.db.Clauses(clause.OnConflict{

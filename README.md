@@ -1,22 +1,23 @@
 # rss-feeds-go
 
-A go utility package for handling RSS feeds.
+A go utility package for handling RSS/Atom feeds.
 
 ## Features
 
-- [X] Fetch RSS feeds from URLs
-  - [X] RSS feeds
-  - [ ] Atom feeds
+- [X] Fetch feeds from URLs
+  - [X] RSS feeds (0.90 to 2.0)
+  - [X] Atom feeds (0.3, 1.0))
+  - [X] JSON feeds (1.0, 1.1)
   - [X] Manually
   - [ ] Periodically
-- [X] Cache fetched RSS feeds locally
+- [X] Cache fetched feeds locally
   - [X] In memory
   - [X] In SQLite3 file
-- [X] Summarize RSS feed's content with Google Gemini API
+- [X] Summarize contents of fetched feed items with Google Gemini API
   - [X] Save summarized contents locally
     - [X] In memory
     - [X] In SQLite3 file
-  - [ ] Transfer summarized contents to somewhere
+  - [ ] Transfer summarized contents to somewhere else
 - [X] Convert cached feeds as RSS XML
 
 ## Usages / Samples
@@ -35,8 +36,9 @@ import (
 func main() {
   if client, err := rf.NewClientWithDB(
     "abcdefghijklmnopqrstuvwxyz0123456789", // google ai api key
-    []string{ // rss feeds' urls
+    []string{ // feeds' urls
       "https://hnrss.org/newest?points=50",
+      "https://www.hackster.io/news.atom",
     },
     "./database.sqlite3", // sqlite3 db filepath
   ); err == nil {

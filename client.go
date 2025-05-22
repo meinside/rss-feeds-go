@@ -11,7 +11,8 @@ import (
 	"strings"
 	"time"
 
-	gf "github.com/gorilla/feeds"
+	"github.com/gorilla/feeds"
+	"github.com/mmcdole/gofeed"
 
 	gt "github.com/meinside/gemini-things-go"
 	ssg "github.com/meinside/simple-scrapper-go"
@@ -29,6 +30,8 @@ const (
 
 const (
 	ErrorPrefixSummaryFailedWithError = `Summary failed with error`
+
+	PublishContentType = `application/rss+xml`
 )
 
 // Client struct
@@ -98,17 +101,16 @@ func (c *Client) SetVerbose(v bool) {
 }
 
 // FetchFeeds fetches feeds.
-func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err error) {
-	feeds = []gf.RssFeed{}
+func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gofeed.Feed, err error) {
+	feeds = []gofeed.Feed{}
 	errs := []error{}
 
 	client := &http.Client{
 		Timeout: time.Duration(fetchFeedsTimeoutSeconds) * time.Second,
 	}
 
-	var fetched gf.RssFeedXml
 	for _, url := range c.feedsURLs {
-		v(c.verbose, "fetching rss feeds from url: %s", url)
+		v(c.verbose, "fetching feeds from url: %s", url)
 
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
@@ -125,40 +127,36 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 			if resp.StatusCode == 200 {
 				contentType := resp.Header.Get("Content-Type")
 
-				// check if `contentType` is supported,
-				if supportedContentType(contentType) {
-					if bytes, err := io.ReadAll(resp.Body); err == nil {
-						if err := xml.Unmarshal(bytes, &fetched); err == nil {
-							v(c.verbose, "fetched %d item(s)", len(fetched.Channel.Items))
+				if bytes, err := io.ReadAll(resp.Body); err == nil {
+					fp := gofeed.NewParser()
+					if fetched, err := fp.ParseString(string(bytes)); err == nil {
+						v(c.verbose, "fetched %d item(s)", len(fetched.Items))
 
-							if ignoreAlreadyCached {
-								// delete if it already exists in the cache
-								fetched.Channel.Items = slices.DeleteFunc(fetched.Channel.Items, func(item *gf.RssItem) bool {
-									exists := c.cache.Exists(item.Guid.Id)
-									if exists {
-										v(c.verbose, "ignoring: '%s' (%s)", item.Title, item.Guid.Id)
-									}
-									return exists
-								})
-							}
-
-							v(c.verbose, "returning %d item(s)", len(fetched.Channel.Items))
-
-							feeds = append(feeds, *fetched.Channel)
-						} else {
-							errs = append(errs, fmt.Errorf("failed to parse rss feeds from '%s': %w", url, err))
+						if ignoreAlreadyCached {
+							// delete if it already exists in the cache
+							fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
+								exists := c.cache.Exists(item.GUID)
+								if exists {
+									v(c.verbose, "ignoring: '%s' (%s)", item.Title, item.GUID)
+								}
+								return exists
+							})
 						}
+
+						v(c.verbose, "returning %d item(s)", len(fetched.Items))
+
+						feeds = append(feeds, *fetched)
 					} else {
-						errs = append(errs, fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err))
+						errs = append(errs, fmt.Errorf("failed to parse feeds from '%s': %w", url, err))
 					}
 				} else {
-					errs = append(errs, fmt.Errorf("content type '%s' not supported for url: '%s'", contentType, url))
+					errs = append(errs, fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err))
 				}
 			} else {
 				errs = append(errs, fmt.Errorf("http error %d from url: '%s'", resp.StatusCode, url))
 			}
 		} else {
-			errs = append(errs, fmt.Errorf("failed to fetch rss feeds from url: %w", err))
+			errs = append(errs, fmt.Errorf("failed to fetch feeds from url: %w", err))
 		}
 	}
 
@@ -175,7 +173,7 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gf.RssFeed, err e
 //
 // If there was an error with quota (HTTP 429), it will return immediately.
 // (remaining feed items can be retried later)
-func (c *Client) SummarizeAndCacheFeeds(feeds []gf.RssFeed, urlScrapper ...*ssg.Scrapper) (err error) {
+func (c *Client) SummarizeAndCacheFeeds(feeds []gofeed.Feed, urlScrapper ...*ssg.Scrapper) (err error) {
 	errs := []error{}
 
 outer:
@@ -308,22 +306,22 @@ func (c *Client) DeleteOldCachedItems() {
 	c.cache.DeleteOlderThan1Month()
 }
 
-// PublishXML returns XML bytes of given cached items.
+// PublishXML returns XML bytes (application/rss+xml) of given cached items.
 func (c *Client) PublishXML(title, link, description, author, email string, items []CachedItem) (bytes []byte, err error) {
-	feed := &gf.Feed{
+	feed := &feeds.Feed{
 		Title:       title,
-		Link:        &gf.Link{Href: link},
+		Link:        &feeds.Link{Href: link},
 		Description: description,
-		Author:      &gf.Author{Name: author, Email: email},
+		Author:      &feeds.Author{Name: author, Email: email},
 		Created:     time.Now(),
 	}
 
-	// drop items without summary
+	// NOTE: drop items without summary (omit feed items that are not summarized yet)
 	items = slices.DeleteFunc(items, func(item CachedItem) bool {
 		return len(item.Summary) <= 0
 	})
 
-	var feedItems []*gf.Item
+	var feedItems []*feeds.Item
 	for _, item := range items {
 		content := decorateHTML(item.Summary)
 
@@ -337,10 +335,12 @@ func (c *Client) PublishXML(title, link, description, author, email string, item
 			}
 		}
 
-		feedItem := gf.Item{
-			Id:          item.GUID,
-			Title:       item.Title,
-			Link:        &gf.Link{Href: item.Link},
+		feedItem := feeds.Item{
+			Id:    item.GUID,
+			Title: item.Title,
+			Link: &feeds.Link{
+				Href: item.Link,
+			},
 			Description: item.Description,
 			Content:     content,
 			Created:     item.CreatedAt,
@@ -351,7 +351,7 @@ func (c *Client) PublishXML(title, link, description, author, email string, item
 	}
 	feed.Items = feedItems
 
-	rssFeed := (&gf.Rss{
+	rssFeed := (&feeds.Rss{
 		Feed: feed,
 	}).RssFeed()
 

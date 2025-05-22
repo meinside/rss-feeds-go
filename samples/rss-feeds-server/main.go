@@ -33,6 +33,7 @@ func main() {
 		[]string{
 			"https://hnrss.org/newest?points=50", // hackernews' newest articles with 50+ points
 			"https://lobste.rs/rss",              // lobst.rs
+			"https://www.hackster.io/news.atom",  // hackster.io
 		},
 		dbFilepath,
 	); err == nil {
@@ -44,14 +45,14 @@ func main() {
 		// http handler
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			if agent := r.Header.Get("User-Agent"); !strings.Contains(agent, rssPollerAgent) {
-				log.Printf("# dropping access from unwanted agent: %s", agent)
+				log.Printf("# dropping access from unwanted user-agent: '%s' (wanted: '%s')", agent, rssPollerAgent)
 				return
 			}
 
 			// fetch cached items,
 			items := client.ListCachedItems(true)
 
-			w.Header().Set("Content-Type", "application/rss+xml")
+			w.Header().Set("Content-Type", rf.PublishContentType)
 			w.Header().Set("Cache-Control", "max-age=60")
 
 			// generate xml and serve it
