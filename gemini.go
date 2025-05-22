@@ -54,11 +54,14 @@ func (c *Client) generate(
 	ctx, cancel := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
 	defer cancel()
 
-	gtc, err := gt.NewClient(c.googleAIAPIKey, c.googleAIModel)
+	gtc, err := gt.NewClient(
+		c.googleAIAPIKey,
+		gt.WithModel(c.googleAIModel),
+	)
 	if err != nil {
 		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
 	}
-	gtc.SetTimeout(generationTimeoutSeconds)
+	gtc.SetTimeoutSeconds(generationTimeoutSeconds)
 	setCustomFileConverters(gtc)
 
 	defer func() {
