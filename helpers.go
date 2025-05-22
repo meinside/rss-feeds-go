@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"regexp"
-	"slices"
 	"strings"
 	"time"
 
@@ -27,18 +26,6 @@ const (
 
 	redacted = "|REDACTED|"
 )
-
-// supported content types
-var _supportedContentTypes []string
-
-func init() {
-	_supportedContentTypes = []string{
-		"text/xml",
-		"application/xml",
-		"application/rss+xml",
-		"application/xhtml+xml",
-	}
-}
 
 // StandardizeJSON standardizes given JSON (JWCC) bytes.
 func StandardizeJSON(b []byte) ([]byte, error) {
@@ -124,30 +111,30 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 					_ = doc.Find("link[rel=\"stylesheet\"]").Remove() // css links
 					_ = doc.Find("style").Remove()                    // embeded css tyles
 
-					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(doc.Text())))
+					content = fmt.Appendf(nil, urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(doc.Text()))
 				} else {
-					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this HTML document."))
+					content = fmt.Appendf(nil, urlToTextFormat, url, contentType, "Failed to read this HTML document.")
 					err = fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err)
 				}
 			} else if strings.HasPrefix(contentType, "text/") {
 				var bytes []byte
 				if bytes, err = io.ReadAll(resp.Body); err == nil {
 					// (success)
-					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(string(bytes)))) // NOTE: removing redundant empty lines
+					content = fmt.Appendf(nil, urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(string(bytes))) // NOTE: removing redundant empty lines
 				} else {
-					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this document."))
+					content = fmt.Appendf(nil, urlToTextFormat, url, contentType, "Failed to read this document.")
 					err = fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err)
 				}
 			} else if strings.HasPrefix(contentType, "application/json") {
 				var bytes []byte
 				if bytes, err = io.ReadAll(resp.Body); err == nil {
-					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, string(bytes)))
+					content = fmt.Appendf(nil, urlToTextFormat, url, contentType, string(bytes))
 				} else {
-					content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, "Failed to read this document."))
+					content = fmt.Appendf(nil, urlToTextFormat, url, contentType, "Failed to read this document.")
 					err = fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err)
 				}
 			} else {
-				content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType)))
+				content = fmt.Appendf(nil, urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType))
 				err = fmt.Errorf("content type '%s' not supported for url: '%s'", contentType, url)
 			}
 		} else if isFileContent(contentType) {
@@ -155,11 +142,11 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 				err = fmt.Errorf("failed to read bytes from url '%s': %w", url, err)
 			}
 		} else {
-			content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType)))
+			content = fmt.Appendf(nil, urlToTextFormat, url, contentType, fmt.Sprintf("Content type '%s' not supported.", contentType))
 			err = fmt.Errorf("content type '%s' not supported for url: '%s'", contentType, url)
 		}
 	} else {
-		content = []byte(fmt.Sprintf(urlToTextFormat, url, contentType, fmt.Sprintf("HTTP Error %d", resp.StatusCode)))
+		content = fmt.Appendf(nil, urlToTextFormat, url, contentType, fmt.Sprintf("HTTP Error %d", resp.StatusCode))
 		err = fmt.Errorf("http error %d from url: '%s'", resp.StatusCode, url)
 	}
 
@@ -174,7 +161,7 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 func removeConsecutiveEmptyLines(input string) string {
 	// trim each line
 	trimmed := []string{}
-	for _, line := range strings.Split(input, "\n") {
+	for line := range strings.SplitSeq(input, "\n") {
 		trimmed = append(trimmed, strings.TrimRight(line, " "))
 	}
 	input = strings.Join(trimmed, "\n")
@@ -271,11 +258,4 @@ func Prettify(v any) string {
 		return string(bytes)
 	}
 	return fmt.Sprintf("%+v", v)
-}
-
-// check if given `contentType` is supported or not
-func supportedContentType(contentType string) bool {
-	return slices.ContainsFunc(_supportedContentTypes, func(supported string) bool {
-		return strings.HasPrefix(contentType, supported)
-	})
 }
