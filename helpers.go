@@ -103,7 +103,9 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 
 	if resp.StatusCode == 200 {
 		if isTextFormattableContent(contentType) { // then format as text prompt
-			if strings.HasPrefix(contentType, "text/html") {
+			if strings.HasPrefix(contentType, "text/html") ||
+				strings.HasPrefix(contentType, "application/xhtml") ||
+				strings.HasPrefix(contentType, "application/xml") {
 				var doc *goquery.Document
 				if doc, err = goquery.NewDocumentFromReader(resp.Body); err == nil {
 					// NOTE: removing unwanted things here
@@ -119,8 +121,8 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 			} else if strings.HasPrefix(contentType, "text/") {
 				var bytes []byte
 				if bytes, err = io.ReadAll(resp.Body); err == nil {
-					// (success)
-					content = fmt.Appendf(nil, urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(string(bytes))) // NOTE: removing redundant empty lines
+					// NOTE: removing redundant empty lines
+					content = fmt.Appendf(nil, urlToTextFormat, url, contentType, removeConsecutiveEmptyLines(string(bytes)))
 				} else {
 					content = fmt.Appendf(nil, urlToTextFormat, url, contentType, "Failed to read this document.")
 					err = fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err)
@@ -176,6 +178,9 @@ func isTextFormattableContent(contentType string) bool {
 	return func(contentType string) bool {
 		switch {
 		case strings.HasPrefix(contentType, "text/"):
+			return true
+		case strings.HasPrefix(contentType, "application/xhtml") ||
+			strings.HasPrefix(contentType, "application/xml"):
 			return true
 		case strings.HasPrefix(contentType, "application/json"):
 			return true
