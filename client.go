@@ -2,7 +2,6 @@ package rf
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -233,7 +232,7 @@ func (c *Client) summarize(title, url string, urlScrapper ...*ssg.Scrapper) (tra
 			if translatedTitle, summarizedContent, err = c.generate(ctx, prompt); err == nil {
 				return
 			} else {
-				v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, errorString(err))
+				v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, gt.ErrToStr(err))
 			}
 		} else if isFileContent(contentType) { // use prompt with files
 			prompt := fmt.Sprintf(summarizeFilePromptFormat, c.desiredLanguage, title)
@@ -241,7 +240,7 @@ func (c *Client) summarize(title, url string, urlScrapper ...*ssg.Scrapper) (tra
 			if translatedTitle, summarizedContent, err = c.generate(ctx, prompt, fetched); err == nil {
 				return
 			} else {
-				v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, errorString(err))
+				v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, gt.ErrToStr(err))
 			}
 		} else {
 			err = fmt.Errorf("not a summarizable content type: %s", contentType)
@@ -249,13 +248,7 @@ func (c *Client) summarize(title, url string, urlScrapper ...*ssg.Scrapper) (tra
 	}
 
 	// return error message
-	var errStr string
-	if errBytes, e := json.MarshalIndent(err, "", "  "); e == nil {
-		errStr = string(errBytes)
-	} else {
-		errStr = errorString(err)
-	}
-	return title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, errStr), err
+	return title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
 }
 
 // fetch url content with or without url scrapper

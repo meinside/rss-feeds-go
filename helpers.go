@@ -2,7 +2,6 @@ package rf
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html"
 	"io"
@@ -14,7 +13,6 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/tailscale/hujson"
-	"google.golang.org/api/googleapi"
 )
 
 const (
@@ -36,16 +34,6 @@ func StandardizeJSON(b []byte) ([]byte, error) {
 	ast.Standardize()
 
 	return ast.Pack(), nil
-}
-
-// convert error to string
-func errorString(err error) (error string) {
-	var gerr *googleapi.Error
-	if errors.As(err, &gerr) {
-		return fmt.Sprintf("googleapi error: %s", gerr.Body)
-	} else {
-		return err.Error()
-	}
 }
 
 // print verbose message
