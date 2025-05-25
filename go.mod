@@ -5,7 +5,7 @@ go 1.24.1
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.3.0
+	github.com/meinside/gemini-things-go v0.3.1
 	github.com/meinside/simple-scrapper-go v0.0.14
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/tailscale/hujson v0.0.0-20250226034555-ec1d1c113d33
@@ -42,7 +42,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/playwright-community/playwright-go v0.5200.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
-	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.60.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.61.0 // indirect
 	go.opentelemetry.io/otel v1.36.0 // indirect
 	go.opentelemetry.io/otel/metric v1.36.0 // indirect
 	go.opentelemetry.io/otel/trace v1.36.0 // indirect
