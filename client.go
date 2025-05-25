@@ -2,6 +2,7 @@ package rf
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
@@ -171,8 +172,8 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gofeed.Feed, err 
 //
 // If summary fails, the original content prepended with the error message will be cached.
 //
-// If there was an error with quota (HTTP 429), it will return immediately.
-// (remaining feed items can be retried later)
+// If there was a retriable error(eg. model overloads), it will return immediately.
+// (remaining feed items will be retried later)
 func (c *Client) SummarizeAndCacheFeeds(feeds []gofeed.Feed, urlScrapper ...*ssg.Scrapper) (err error) {
 	errs := []error{}
 
@@ -182,11 +183,11 @@ outer:
 			// summarize,
 			translatedTitle, summarizedContent, err := c.summarize(item.Title, item.Link, urlScrapper...)
 			if err != nil {
-				// NOTE: skip remaining feed items if err is
-				// http 429 ('RESOURCE_EXHAUSTED') or
-				// http 503 ('The model is overloaded. Please try again later.')
-				if gt.IsQuotaExceeded(err) || gt.IsModelOverloaded(err) {
-					v(c.verbose, "skipping remaining feed items due to quota limit or overloaded model")
+				// NOTE: skip remaining feed items if err is:
+				//   - http 503 ('The model is overloaded. Please try again later.')
+				// for retyring later
+				if gt.IsModelOverloaded(err) {
+					v(c.verbose, "skipping remaining feed items due to overloaded model (will be retried later)")
 
 					errs = append(errs, err)
 
@@ -248,7 +249,13 @@ func (c *Client) summarize(title, url string, urlScrapper ...*ssg.Scrapper) (tra
 	}
 
 	// return error message
-	return title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, errorString(err)), err
+	var errStr string
+	if errBytes, e := json.MarshalIndent(err, "", "  "); e == nil {
+		errStr = string(errBytes)
+	} else {
+		errStr = errorString(err)
+	}
+	return title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, errStr), err
 }
 
 // fetch url content with or without url scrapper
