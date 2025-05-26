@@ -196,7 +196,7 @@ outer:
 				// prepend error text to the original content
 				summarizedContent = fmt.Sprintf("%s\n\n%s", summarizedContent, item.Description)
 
-				errs = append(errs, err)
+				errs = append(errs, fmt.Errorf("failed to summarize item '%s' (%s): %w", item.Title, item.Link, err))
 			}
 
 			// cache, (or update)
