@@ -16,6 +16,8 @@ const (
 	verbose = true
 
 	noSummary = "<<< no summary >>>"
+
+	ignoreItemsOlderThanDays = 7
 )
 
 func main() {
@@ -32,7 +34,7 @@ func main() {
 		client.SetDesiredLanguage(desiredLanguage)
 		client.SetVerbose(verbose)
 
-		if feeds, err := client.FetchFeeds(true); err == nil {
+		if feeds, err := client.FetchFeeds(true, ignoreItemsOlderThanDays); err == nil {
 			err := client.SummarizeAndCacheFeeds(feeds)
 			if err != nil {
 				log.Printf("# summary failed with some errors: %s", err)
