@@ -101,7 +101,7 @@ func (c *Client) SetVerbose(v bool) {
 }
 
 // FetchFeeds fetches feeds.
-func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gofeed.Feed, err error) {
+func (c *Client) FetchFeeds(ignoreAlreadyCached bool, ignoreItemsPublishedBeforeDays uint) (feeds []gofeed.Feed, err error) {
 	feeds = []gofeed.Feed{}
 	errs := []error{}
 
@@ -137,11 +137,20 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool) (feeds []gofeed.Feed, err 
 							fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
 								exists := c.cache.Exists(item.GUID)
 								if exists {
-									v(c.verbose, "ignoring: '%s' (%s)", item.Title, item.GUID)
+									v(c.verbose, "ignoring already cached item: '%s' (%s)", item.Title, item.GUID)
 								}
 								return exists
 							})
 						}
+
+						// delete if it was published too long ago
+						fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
+							before := item.PublishedParsed.Before(time.Now().Add(time.Duration(-ignoreItemsPublishedBeforeDays) * 24 * time.Hour))
+							if before {
+								v(c.verbose, "ignoring item older than %d days: '%s' (%s)", ignoreItemsPublishedBeforeDays, item.Title, item.GUID)
+							}
+							return before
+						})
 
 						v(c.verbose, "returning %d item(s)", len(fetched.Items))
 
