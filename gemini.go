@@ -55,7 +55,7 @@ func (c *Client) generate(
 	defer cancel()
 
 	gtc, err := gt.NewClient(
-		c.googleAIAPIKey,
+		c.rotatedAPIKey(),
 		gt.WithModel(c.googleAIModel),
 	)
 	if err != nil {

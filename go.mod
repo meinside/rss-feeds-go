@@ -5,11 +5,11 @@ go 1.24.1
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.3.6
+	github.com/meinside/gemini-things-go v0.3.7
 	github.com/meinside/simple-scrapper-go v0.0.14
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/tailscale/hujson v0.0.0-20250226034555-ec1d1c113d33
-	google.golang.org/genai v1.7.0
+	google.golang.org/genai v1.8.0
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.30.0
 )
