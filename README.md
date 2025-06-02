@@ -35,7 +35,7 @@ import (
 
 func main() {
   if client, err := rf.NewClientWithDB(
-    "abcdefghijklmnopqrstuvwxyz0123456789", // google ai api key
+    []string{"abcdefghijklmnopqrstuvwxyz0123456789"}, // google ai api keys (for rotation)
     []string{ // feeds' urls
       "https://hnrss.org/newest?points=50",
       "https://www.hackster.io/news.atom",
