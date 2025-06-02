@@ -11,8 +11,7 @@ import (
 )
 
 const (
-	googleAIAPIKey = "---not-needed---"
-	dbFilepath     = "./test.db"
+	dbFilepath = "./test.db"
 
 	httpPort       = 10101
 	rssTitle       = "Testing RSS server"
@@ -29,7 +28,7 @@ const (
 
 func main() {
 	if client, err := rf.NewClientWithDB(
-		googleAIAPIKey,
+		nil, // not needed
 		[]string{
 			"https://hnrss.org/newest?points=50", // hackernews' newest articles with 50+ points
 			"https://lobste.rs/rss",              // lobst.rs

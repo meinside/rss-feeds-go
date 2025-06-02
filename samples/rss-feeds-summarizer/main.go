@@ -22,7 +22,7 @@ const (
 
 func main() {
 	if client, err := rf.NewClientWithDB(
-		googleAIAPIKey,
+		[]string{googleAIAPIKey},
 		[]string{
 			"https://hnrss.org/newest?points=50", // hackernews' newest articles with 50+ points
 			"https://lobste.rs/rss",              // lobst.rs
