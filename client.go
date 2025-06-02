@@ -39,22 +39,24 @@ type Client struct {
 	feedsURLs []string
 	cache     FeedsItemsCache
 
-	googleAIAPIKey string
-	googleAIModel  string
+	googleAIAPIKeys []string
+	googleAIModel   string
 
 	desiredLanguage          string
 	summarizeIntervalSeconds int
 	verbose                  bool
+
+	_requestCountForAPIKeyRotation int
 }
 
 // NewClient returns a new client with memory cache.
-func NewClient(googleAIAPIKey string, feedsURLs []string) *Client {
+func NewClient(googleAIAPIKeys []string, feedsURLs []string) *Client {
 	return &Client{
 		feedsURLs: feedsURLs,
 		cache:     newMemCache(),
 
-		googleAIAPIKey: googleAIAPIKey,
-		googleAIModel:  defaultGoogleAIModel,
+		googleAIAPIKeys: googleAIAPIKeys,
+		googleAIModel:   defaultGoogleAIModel,
 
 		desiredLanguage:          defaultDesiredLanguage,
 		summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
@@ -62,14 +64,14 @@ func NewClient(googleAIAPIKey string, feedsURLs []string) *Client {
 }
 
 // NewClientWithDB returns a new client with SQLite DB cache.
-func NewClientWithDB(googleAIAPIKey string, feedsURLs []string, dbFilepath string) (client *Client, err error) {
+func NewClientWithDB(googleAIAPIKeys []string, feedsURLs []string, dbFilepath string) (client *Client, err error) {
 	if dbCache, err := newDBCache(dbFilepath); err == nil {
 		return &Client{
 			feedsURLs: feedsURLs,
 			cache:     dbCache,
 
-			googleAIAPIKey: googleAIAPIKey,
-			googleAIModel:  defaultGoogleAIModel,
+			googleAIAPIKeys: googleAIAPIKeys,
+			googleAIModel:   defaultGoogleAIModel,
 
 			desiredLanguage:          defaultDesiredLanguage,
 			summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
@@ -296,11 +298,17 @@ func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.
 	return scrapped, contentType, err
 }
 
+// return a rotated api key
+func (c *Client) rotatedAPIKey() string {
+	rotated := c.googleAIAPIKeys[c._requestCountForAPIKeyRotation%len(c.googleAIAPIKeys)]
+	c._requestCountForAPIKeyRotation++
+
+	return rotated
+}
+
 // ListCachedItems lists cached items.
 func (c *Client) ListCachedItems(includeItemsMarkedAsRead bool) []CachedItem {
-	return redactItems(c.cache.List(includeItemsMarkedAsRead), []string{
-		c.googleAIAPIKey,
-	})
+	return redactItems(c.cache.List(includeItemsMarkedAsRead), c.googleAIAPIKeys)
 }
 
 // MarkCachedItemsAsRead marks given cached items as read.
