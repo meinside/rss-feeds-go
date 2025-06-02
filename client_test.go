@@ -13,7 +13,7 @@ func TestSummarize(t *testing.T) {
 	googleAIAPIKey := os.Getenv("API_KEY")
 
 	if googleAIAPIKey != "" {
-		client := NewClient(googleAIAPIKey, nil)
+		client := NewClient([]string{googleAIAPIKey}, nil)
 		// client.SetDesiredLanguage("en_US")
 		client.SetDesiredLanguage("ko_KR")
 
