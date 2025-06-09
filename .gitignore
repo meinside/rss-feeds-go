@@ -1,4 +1,12 @@
-samples/rss-feeds-summarizer/rss-feeds-summarizer
-samples/rss-feeds-server/rss-feeds-server
+# .gitignore
+
+# dotenv for testing
+.env
+
+# temporary files and local data
 *.swp*
 *.db
+
+# sample binaries
+samples/rss-feeds-summarizer/rss-feeds-summarizer
+samples/rss-feeds-server/rss-feeds-server
