@@ -1,3 +1,4 @@
+// Package rf for handling RSS feeds
 package rf
 
 import (
@@ -205,9 +206,17 @@ outer:
 				}
 
 				// prepend error text to the original content
-				summarizedContent = fmt.Sprintf("%s\n\n%s", summarizedContent, item.Description)
+				summarizedContent = fmt.Sprintf(`%s\n\n%s`, summarizedContent, item.Description)
 
 				errs = append(errs, fmt.Errorf("failed to summarize item '%s' (%s): %w", item.Title, item.Link, err))
+			} else {
+				// append the result of summary to the content
+				summarizedContent = fmt.Sprintf(
+					`%s\n\n(summarized with **%s**, %s)`,
+					summarizedContent,
+					c.googleAIModel,
+					time.Now().Format("2006-01-02 15:04:05 (Mon) MST"),
+				)
 			}
 
 			// cache, (or update)
