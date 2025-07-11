@@ -18,7 +18,7 @@ import (
 const (
 	defaultGoogleAIModel = "gemini-2.5-flash"
 
-	systemInstructionFormat = `You are a precise and useful agent for summarizing and translating contents retrieved from web sites or RSS/Atom feeds.
+	systemInstructionFormatForSummary = `You are a precise and useful agent for summarizing and translating contents retrieved from web sites or RSS/Atom feeds.
 
 Current datetime is %[1]s.
 
@@ -29,14 +29,20 @@ Respond to user messages according to the following principles:
 - Try to keep the nuances of the original title and/or content as much as possible.
 - If the title is already in the same language, or too vague to be translated, just keep it as it is.
 `
-	summarizePromptFormat = `Summarize the content of following <content:link></content:link> tag in %[1]s language,
+	summarizeContentPromptFormat = `Summarize the content of following <content:link></content:link> tag in %[1]s language,
 and translate the title of the content in <content:title></content:title> tag into the same language
 referring to the summarized content.
 
 <content:title>%[2]s</content:title>
 
 %[3]s`
-	summarizeFilePromptFormat = `Summarize the content of attached file(s) in %[1]s language,
+	summarizeContentFilePromptFormat = `Summarize the content of attached file(s) in %[1]s language,
+and translate the title of the content in <content:title></content:title> tag into the same language
+referring to the summarized content:
+
+<content:title>%[2]s</content:title>`
+
+	summarizeYouTubePromptFormat = `Summarize the content of given YouTube video in %[1]s language,
 and translate the title of the content in <content:title></content:title> tag into the same language
 referring to the summarized content:
 
@@ -45,8 +51,8 @@ referring to the summarized content:
 	generationTimeoutSeconds = 60 // 1 minute
 )
 
-// generate with given things
-func (c *Client) generate(
+// translate and summarize given things
+func (c *Client) translateAndSummarize(
 	ctx context.Context,
 	prompt string,
 	files ...[]byte,
@@ -71,7 +77,7 @@ func (c *Client) generate(
 	}()
 
 	// system instruction
-	gtc.SetSystemInstructionFunc(defaultSystemInstruction)
+	gtc.SetSystemInstructionFunc(systemInstructionForTranslationAndSummary)
 
 	// prompt & files
 	promptFiles := map[string]io.Reader{}
@@ -82,6 +88,103 @@ func (c *Client) generate(
 	prompts := []gt.Prompt{gt.PromptFromText(prompt)}
 	for filename, file := range promptFiles {
 		prompts = append(prompts, gt.PromptFromFile(filename, file))
+	}
+
+	// set function call
+	options := genOptions()
+
+	// generate
+	var result *genai.GenerateContentResponse
+	if result, err = gtc.Generate(
+		ctx,
+		prompts,
+		options,
+	); err == nil {
+		if len(result.Candidates) > 0 {
+			candidate := result.Candidates[0]
+
+			if content := candidate.Content; content != nil {
+				for _, part := range content.Parts {
+					if part.FunctionCall != nil {
+						fn := part.FunctionCall
+
+						if fn.Name != fnNameTranslateTitleAndSummarizeContent {
+							err = fmt.Errorf("not an expected function name: '%s'", fn.Name)
+							break
+						} else {
+							// get trasnlated title
+							if arg, e := gt.FuncArg[string](fn.Args, fnParamNameTranslatedTitle); e == nil {
+								if arg != nil {
+									translatedTitle = *arg
+								} else {
+									err = fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
+									break
+								}
+							} else {
+								err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
+								break
+							}
+
+							// get summarized content
+							if arg, e := gt.FuncArg[string](fn.Args, fnParamNameSummarizedContent); e == nil {
+								if arg != nil {
+									summarizedContent = *arg
+								} else {
+									err = fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
+									break
+								}
+							} else {
+								err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
+								break
+							}
+						}
+					}
+				}
+			} else {
+				if candidate.FinishReason != genai.FinishReasonUnspecified {
+					err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
+				} else {
+					err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+				}
+			}
+		}
+	}
+
+	return
+}
+
+// translate and summarize given youtube url
+func (c *Client) translateAndSummarizeYouTube(
+	ctx context.Context,
+	title string,
+	url string,
+) (translatedTitle, summarizedContent string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
+	defer cancel()
+
+	gtc, err := gt.NewClient(
+		c.rotatedAPIKey(),
+		gt.WithModel(c.googleAIModel),
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
+	}
+	gtc.SetTimeoutSeconds(generationTimeoutSeconds)
+	setCustomFileConverters(gtc)
+
+	defer func() {
+		if err := gtc.Close(); err != nil {
+			log.Printf("failed to close gemini-things client: %s", err)
+		}
+	}()
+
+	// system instruction
+	gtc.SetSystemInstructionFunc(systemInstructionForTranslationAndSummary)
+
+	// prompts
+	prompts := []gt.Prompt{
+		gt.PromptFromText(fmt.Sprintf(summarizeYouTubePromptFormat, c.desiredLanguage, title)),
+		gt.PromptFromURI(url),
 	}
 
 	// set function call
@@ -200,9 +303,9 @@ func genOptions() *gt.GenerationOptions {
 	return options
 }
 
-// generate a default system instruction with given configuration
-func defaultSystemInstruction() string {
-	return fmt.Sprintf(systemInstructionFormat,
+// generate a system instruction with given configuration
+func systemInstructionForTranslationAndSummary() string {
+	return fmt.Sprintf(systemInstructionFormatForSummary,
 		time.Now().Format("2006-01-02 15:04:05 (Mon) MST"),
 	)
 }

@@ -241,29 +241,41 @@ func (c *Client) summarize(title, url string, urlScrapper ...*ssg.Scrapper) (tra
 	ctx, cancel := context.WithTimeout(context.TODO(), summarizeTimeoutSeconds*time.Second)
 	defer cancel()
 
-	v(c.verbose, "summarizing content of url: %s", url)
+	if isYouTubeURL(url) {
+		v(c.verbose, "summarizing youtube url: %s", url)
 
-	var fetched []byte
-	var contentType string
-	if fetched, contentType, err = c.fetch(maxRetryCount, url, urlScrapper...); err == nil {
-		if isTextFormattableContent(contentType) { // use text prompt
-			prompt := fmt.Sprintf(summarizePromptFormat, c.desiredLanguage, title, string(fetched))
-
-			if translatedTitle, summarizedContent, err = c.generate(ctx, prompt); err == nil {
-				return
-			} else {
-				v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, gt.ErrToStr(err))
-			}
-		} else if isFileContent(contentType) { // use prompt with files
-			prompt := fmt.Sprintf(summarizeFilePromptFormat, c.desiredLanguage, title)
-
-			if translatedTitle, summarizedContent, err = c.generate(ctx, prompt, fetched); err == nil {
-				return
-			} else {
-				v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, gt.ErrToStr(err))
-			}
+		// summarize & translate given title and youtube url
+		if translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctx, title, url); err == nil {
+			return
 		} else {
-			err = fmt.Errorf("not a summarizable content type: %s", contentType)
+			v(c.verbose, "failed to generate summary from youtube url: '%s', error: %s", url, gt.ErrToStr(err))
+		}
+	} else {
+		v(c.verbose, "summarizing content of url: %s", url)
+
+		// fetch the content of given url and summarize & translate it
+		var fetched []byte
+		var contentType string
+		if fetched, contentType, err = c.fetch(maxRetryCount, url, urlScrapper...); err == nil {
+			if isTextFormattableContent(contentType) { // use text prompt
+				prompt := fmt.Sprintf(summarizeContentPromptFormat, c.desiredLanguage, title, string(fetched))
+
+				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctx, prompt); err == nil {
+					return
+				} else {
+					v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, gt.ErrToStr(err))
+				}
+			} else if isFileContent(contentType) { // use prompt with files
+				prompt := fmt.Sprintf(summarizeContentFilePromptFormat, c.desiredLanguage, title)
+
+				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctx, prompt, fetched); err == nil {
+					return
+				} else {
+					v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, gt.ErrToStr(err))
+				}
+			} else {
+				err = fmt.Errorf("not a summarizable content type: %s", contentType)
+			}
 		}
 	}
 

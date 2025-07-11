@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -243,6 +244,16 @@ func decorateHTML(body string) string {
 	// TODO: add some more decorations
 
 	return body
+}
+
+// check if given URL is a YouTube video
+func isYouTubeURL(url string) bool {
+	return slices.ContainsFunc([]string{
+		"www.youtube.com",
+		"youtu.be",
+	}, func(e string) bool {
+		return strings.Contains(url, e)
+	})
 }
 
 // Prettify prettifies given thing in JSON format.
