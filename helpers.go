@@ -21,7 +21,7 @@ const (
 
 	fakeUserAgent = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0`
 
-	fetchURLTimeoutSeconds = 10 // 10 seconds' timeout for fetching url contents
+	fetchURLTimeoutSeconds = 10 // timeout seconds for fetching url contents
 
 	redacted = "|REDACTED|"
 )
@@ -61,7 +61,7 @@ func getContentType(url string, verbose bool) (contentType string, err error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch head from url: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return resp.Header.Get("Content-Type"), nil
 }
@@ -84,7 +84,7 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 	if err != nil {
 		return nil, contentType, fmt.Errorf("failed to fetch contents from url: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	contentType = resp.Header.Get("Content-Type")
 
