@@ -5,7 +5,7 @@ go 1.24.1
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.3.22
+	github.com/meinside/gemini-things-go v0.3.23
 	github.com/meinside/simple-scrapper-go v0.0.14
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a
@@ -15,8 +15,8 @@ require (
 )
 
 require (
-	cloud.google.com/go v0.121.3 // indirect
-	cloud.google.com/go/auth v0.16.2 // indirect
+	cloud.google.com/go v0.121.4 // indirect
+	cloud.google.com/go/auth v0.16.3 // indirect
 	cloud.google.com/go/compute/metadata v0.7.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
@@ -52,6 +52,6 @@ require (
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250715232539-7130f93afb79 // indirect
-	google.golang.org/grpc v1.74.0 // indirect
+	google.golang.org/grpc v1.73.0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 )
