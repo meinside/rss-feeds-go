@@ -48,7 +48,7 @@ referring to the summarized content:
 
 <content:title>%[2]s</content:title>`
 
-	generationTimeoutSeconds = 60 // 1 minute
+	generationTimeoutSeconds = 3 * 60 // timeout seconds for generation (summary + translation)
 )
 
 // translate and summarize given things
