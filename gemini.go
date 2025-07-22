@@ -57,9 +57,6 @@ func (c *Client) translateAndSummarize(
 	prompt string,
 	files ...[]byte,
 ) (translatedTitle, summarizedContent string, err error) {
-	ctx, cancel := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
-	defer cancel()
-
 	gtc, err := gt.NewClient(
 		c.rotatedAPIKey(),
 		gt.WithModel(c.googleAIModel),
@@ -159,9 +156,6 @@ func (c *Client) translateAndSummarizeYouTube(
 	title string,
 	url string,
 ) (translatedTitle, summarizedContent string, err error) {
-	ctx, cancel := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
-	defer cancel()
-
 	gtc, err := gt.NewClient(
 		c.rotatedAPIKey(),
 		gt.WithModel(c.googleAIModel),
