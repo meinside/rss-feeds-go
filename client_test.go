@@ -28,6 +28,20 @@ func TestSummarize(t *testing.T) {
 			log.Printf(">>> summarized content: %s", summarizedContent)
 		}
 
+		// keep the title if something goes wrong with the content
+		if translatedTitle, summarizedContent, err := client.summarize(
+			`What is the answer to life, the universe, and everything?`,
+			`https://no-sucn-domain/that-will-lead/to/fetch-error`,
+		); err != nil {
+			if translatedTitle != `What is the answer to life, the universe, and everything?` {
+				t.Errorf("should have kept the title, but got '%s'", translatedTitle)
+			}
+			log.Printf(">>> translated title: %s", translatedTitle)
+			log.Printf(">>> summarized content: %s", summarizedContent)
+		} else {
+			t.Errorf("should have failed with the wrong url")
+		}
+
 		// summarize youtube url and translate title
 		if translatedTitle, summarizedContent, err := client.summarize(
 			`I2C test on Raspberry Pi with Adafruit 8x8 LED Matrix and Ruby`,
