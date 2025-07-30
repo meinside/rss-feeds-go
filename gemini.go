@@ -30,12 +30,11 @@ Respond to user messages according to the following principles:
 - If the title is already in the same language, or too vague to be translated, just keep it as it is.
 `
 	summarizeContentPromptFormat = `Summarize the content of following <content:link></content:link> tag in %[1]s language,
-and translate the title of the content in <content:title></content:title> tag into the same language
-referring to the summarized content.
+and translate the title of the content in <content:title></content:title> tag into the same language referring to the summarized content.
+If the content implies an error such as network or permission issues, do not translate the title and keep it as is.
 
 <content:title>%[2]s</content:title>
-
-%[3]s`
+<content:link>%[3]s</content:link>`
 	summarizeContentFilePromptFormat = `Summarize the content of attached file(s) in %[1]s language,
 and translate the title of the content in <content:title></content:title> tag into the same language
 referring to the summarized content:
