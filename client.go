@@ -21,7 +21,7 @@ import (
 
 const (
 	fetchFeedsTimeoutSeconds = 30     // 30 seconds's timeout for fetching feeds
-	summarizeTimeoutSeconds  = 5 * 60 // timeout seconds for summary (should be enough for `get content type + fetch (retry) + generation`)
+	summarizeTimeoutSeconds  = 6 * 60 // timeout seconds for summary (should be enough for `get content type + fetch (retry) + generation`)
 
 	defaultSummarizeIntervalSeconds = 10 // 10 seconds' interval between summaries
 	defaultDesiredLanguage          = "English"
@@ -191,8 +191,20 @@ func (c *Client) SummarizeAndCacheFeeds(feeds []gofeed.Feed, urlScrapper ...*ssg
 outer:
 	for _, f := range feeds {
 		for i, item := range f.Items {
+			// context with timeout
+			ctx, cancel := context.WithTimeout(
+				context.TODO(),
+				summarizeTimeoutSeconds*time.Second,
+			)
+			defer cancel()
+
 			// summarize,
-			translatedTitle, summarizedContent, err := c.summarize(item.Title, item.Link, urlScrapper...)
+			translatedTitle, summarizedContent, err := c.summarize(
+				ctx,
+				item.Title,
+				item.Link,
+				urlScrapper...,
+			)
 			if err != nil {
 				// NOTE: skip remaining feed items if err is:
 				//   - http 503 ('The model is overloaded. Please try again later.')
@@ -237,12 +249,18 @@ outer:
 }
 
 // summarize the content of given `url`
-func (c *Client) summarize(title, url string, urlScrapper ...*ssg.Scrapper) (translatedTitle, summarizedContent string, err error) {
-	ctx, cancel := context.WithTimeout(context.TODO(), summarizeTimeoutSeconds*time.Second)
-	defer cancel()
+func (c *Client) summarize(
+	ctx context.Context,
+	title, url string,
+	urlScrapper ...*ssg.Scrapper,
+) (translatedTitle, summarizedContent string, err error) {
+	var cancel context.CancelFunc
 
 	if isYouTubeURL(url) {
 		v(c.verbose, "summarizing youtube url: %s", url)
+
+		ctx, cancel = context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
+		defer cancel()
 
 		// summarize & translate given title and youtube url
 		if translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctx, title, url); err == nil {
@@ -252,6 +270,9 @@ func (c *Client) summarize(title, url string, urlScrapper ...*ssg.Scrapper) (tra
 		}
 	} else {
 		v(c.verbose, "summarizing content of url: %s", url)
+
+		ctx, cancel = context.WithTimeout(ctx, generationTimeoutSecondsForYoutube*time.Second)
+		defer cancel()
 
 		// fetch the content of given url and summarize & translate it
 		var fetched []byte
