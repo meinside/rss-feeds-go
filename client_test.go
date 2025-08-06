@@ -1,9 +1,11 @@
 package rf
 
 import (
+	"context"
 	"log"
 	"os"
 	"testing"
+	"time"
 )
 
 // TODO: add more tests
@@ -18,7 +20,10 @@ func TestSummarize(t *testing.T) {
 		client.SetDesiredLanguage("ko_KR")
 
 		// summarize content and translate title
+		ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+		defer cancel()
 		if translatedTitle, summarizedContent, err := client.summarize(
+			ctx,
 			`meinside/rss-feeds-go: A go utility package for handling RSS feeds.`,
 			`https://github.com/meinside/rss-feeds-go`,
 		); err != nil {
@@ -29,7 +34,10 @@ func TestSummarize(t *testing.T) {
 		}
 
 		// keep the title if something goes wrong with the content
+		ctx, cancel = context.WithTimeout(context.TODO(), 60*time.Second)
+		defer cancel()
 		if translatedTitle, summarizedContent, err := client.summarize(
+			ctx,
 			`What is the answer to life, the universe, and everything?`,
 			`https://no-sucn-domain/that-will-lead/to/fetch-error`,
 		); err != nil {
@@ -43,7 +51,10 @@ func TestSummarize(t *testing.T) {
 		}
 
 		// summarize youtube url and translate title
+		ctx, cancel = context.WithTimeout(context.TODO(), 60*time.Second)
+		defer cancel()
 		if translatedTitle, summarizedContent, err := client.summarize(
+			ctx,
 			`I2C test on Raspberry Pi with Adafruit 8x8 LED Matrix and Ruby`,
 			`https://www.youtube.com/watch?v=fV5rI_5fDI8`,
 		); err != nil {
