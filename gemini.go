@@ -47,7 +47,8 @@ referring to the summarized content:
 
 <content:title>%[2]s</content:title>`
 
-	generationTimeoutSeconds = 3 * 60 // timeout seconds for generation (summary + translation)
+	generationTimeoutSeconds           = 3 * 60 // timeout seconds for generation (summary + translation)
+	generationTimeoutSecondsForYoutube = 5 * 60 // timeout seconds for summary of youtube video
 )
 
 // translate and summarize given things
@@ -63,7 +64,6 @@ func (c *Client) translateAndSummarize(
 	if err != nil {
 		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
 	}
-	gtc.SetTimeoutSeconds(generationTimeoutSeconds)
 	setCustomFileConverters(gtc)
 
 	defer func() {
@@ -162,7 +162,6 @@ func (c *Client) translateAndSummarizeYouTube(
 	if err != nil {
 		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
 	}
-	gtc.SetTimeoutSeconds(generationTimeoutSeconds)
 	setCustomFileConverters(gtc)
 
 	defer func() {
