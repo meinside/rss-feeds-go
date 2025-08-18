@@ -256,6 +256,14 @@ func isYouTubeURL(url string) bool {
 	})
 }
 
+// normalize given YouTube URL for summary
+func normalizeYouTubeURL(url string) string {
+	if strings.HasPrefix(url, "https://www.youtube.com/live/") {
+		return strings.ReplaceAll(url, "https://www.youtube.com/live/", "https://www.youtube.com/watch?v=")
+	}
+	return url
+}
+
 // Prettify prettifies given thing in JSON format.
 func Prettify(v any) string {
 	if bytes, err := json.MarshalIndent(v, "", "  "); err == nil {

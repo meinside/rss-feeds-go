@@ -257,6 +257,8 @@ func (c *Client) summarize(
 	var cancel context.CancelFunc
 
 	if isYouTubeURL(url) {
+		url = normalizeYouTubeURL(url)
+
 		v(c.verbose, "summarizing youtube url: %s", url)
 
 		ctx, cancel = context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
