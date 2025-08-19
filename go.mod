@@ -5,11 +5,11 @@ go 1.24.1
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.3.28
+	github.com/meinside/gemini-things-go v0.3.29
 	github.com/meinside/simple-scrapper-go v0.0.14
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a
-	google.golang.org/genai v1.20.0
+	google.golang.org/genai v1.21.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.30.1
 )
@@ -51,7 +51,7 @@ require (
 	golang.org/x/net v0.43.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250811230008-5f3141c8851a // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250818200422-3122310a409c // indirect
 	google.golang.org/grpc v1.74.2 // indirect
 	google.golang.org/protobuf v1.36.7 // indirect
 )
