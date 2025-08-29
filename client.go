@@ -284,6 +284,14 @@ func (c *Client) summarize(
 				prompt := fmt.Sprintf(summarizeContentPromptFormat, c.desiredLanguage, title, string(fetched))
 
 				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctx, prompt); err == nil {
+					// FIXME: sometimes translated/summarized results are empty
+					if len(translatedTitle) <= 0 {
+						translatedTitle = title
+					}
+					if len(summarizedContent) <= 0 {
+						summarizedContent = summarizedContentEmpty
+					}
+
 					return
 				} else {
 					v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, gt.ErrToStr(err))
@@ -292,6 +300,14 @@ func (c *Client) summarize(
 				prompt := fmt.Sprintf(summarizeContentFilePromptFormat, c.desiredLanguage, title)
 
 				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctx, prompt, fetched); err == nil {
+					// FIXME: sometimes translated/summarized results are empty
+					if len(translatedTitle) <= 0 {
+						translatedTitle = title
+					}
+					if len(summarizedContent) <= 0 {
+						summarizedContent = summarizedContentEmpty
+					}
+
 					return
 				} else {
 					v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, gt.ErrToStr(err))
