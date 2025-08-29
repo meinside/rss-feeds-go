@@ -11,7 +11,7 @@ require (
 	github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a
 	google.golang.org/genai v1.22.0
 	gorm.io/driver/sqlite v1.6.0
-	gorm.io/gorm v1.30.1
+	gorm.io/gorm v1.30.2
 )
 
 require (

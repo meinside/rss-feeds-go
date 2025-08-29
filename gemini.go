@@ -47,6 +47,8 @@ referring to the summarized content:
 
 <content:title>%[2]s</content:title>`
 
+	summarizedContentEmpty = "Summarized content was empty."
+
 	generationTimeoutSeconds           = 3 * 60 // timeout seconds for generation (summary + translation)
 	generationTimeoutSecondsForYoutube = 5 * 60 // timeout seconds for summary of youtube video
 )
