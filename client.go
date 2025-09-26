@@ -266,7 +266,7 @@ func (c *Client) summarize(
 
 		// summarize & translate given title and youtube url
 		if translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctx, title, url); err == nil {
-			return
+			return translatedTitle, summarizedContent, err
 		} else {
 			v(c.verbose, "failed to generate summary from youtube url: '%s', error: %s", url, gt.ErrToStr(err))
 		}
@@ -292,7 +292,7 @@ func (c *Client) summarize(
 						summarizedContent = summarizedContentEmpty
 					}
 
-					return
+					return translatedTitle, summarizedContent, err
 				} else {
 					v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, gt.ErrToStr(err))
 				}
@@ -308,12 +308,23 @@ func (c *Client) summarize(
 						summarizedContent = summarizedContentEmpty
 					}
 
-					return
+					return translatedTitle, summarizedContent, err
 				} else {
 					v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, gt.ErrToStr(err))
 				}
 			} else {
 				err = fmt.Errorf("not a summarizable content type: %s", contentType)
+			}
+		} else {
+			if translatedTitle, summarizedContent, err = c.summarizeURL(ctx, title, url, c.desiredLanguage); err == nil {
+				// FIXME: sometimes summarized results are empty
+				if len(summarizedContent) <= 0 {
+					summarizedContent = summarizedContentEmpty
+				}
+
+				return translatedTitle, summarizedContent, err
+			} else {
+				v(c.verbose, "failed to generate summary with url: '%s', error: %s", url, gt.ErrToStr(err))
 			}
 		}
 	}

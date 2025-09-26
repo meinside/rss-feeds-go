@@ -5,11 +5,11 @@ go 1.25.0
 require (
 	github.com/PuerkitoBio/goquery v1.10.3
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.3.38
+	github.com/meinside/gemini-things-go v0.3.40
 	github.com/meinside/simple-scrapper-go v0.0.14
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a
-	google.golang.org/genai v1.25.0
+	google.golang.org/genai v1.26.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0
 )
@@ -17,7 +17,7 @@ require (
 require (
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.16.5 // indirect
-	cloud.google.com/go/compute/metadata v0.8.4 // indirect
+	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/deckarep/golang-set/v2 v2.8.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -38,7 +38,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.32 // indirect
 	github.com/meinside/randomized-string-generator-go v0.0.1 // indirect
 	github.com/mmcdole/goxpp v1.1.1 // indirect
-	github.com/modelcontextprotocol/go-sdk v0.6.0 // indirect
+	github.com/modelcontextprotocol/go-sdk v0.7.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/playwright-community/playwright-go v0.5200.1 // indirect
