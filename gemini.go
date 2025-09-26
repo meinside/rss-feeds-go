@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	// google ai
@@ -40,6 +41,9 @@ and translate the title of the content in <content:title></content:title> tag in
 referring to the summarized content:
 
 <content:title>%[2]s</content:title>`
+	summarizeContentURLFormat = `Summarize the url of following <content:link></content:link> tag in %[1]s language.
+
+<content:link>%[2]s</content:link>`
 
 	summarizeYouTubePromptFormat = `Summarize the content of given YouTube video in %[1]s language,
 and translate the title of the content in <content:title></content:title> tag into the same language
@@ -148,7 +152,77 @@ func (c *Client) translateAndSummarize(
 		}
 	}
 
-	return
+	return translatedTitle, summarizedContent, err
+}
+
+// summarize given url
+func (c *Client) summarizeURL(
+	ctx context.Context,
+	title string,
+	url string,
+	desiredLanguage string,
+) (untouchedTitle string, summarizedContent string, err error) {
+	gtc, err := gt.NewClient(
+		c.rotatedAPIKey(),
+		gt.WithModel(c.googleAIModel),
+	)
+	if err != nil {
+		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
+	}
+
+	defer func() {
+		if err := gtc.Close(); err != nil {
+			log.Printf("failed to close gemini-things client: %s", err)
+		}
+	}()
+
+	// system instruction
+	gtc.SetSystemInstructionFunc(systemInstructionForTranslationAndSummary)
+
+	// prompts
+	prompts := []gt.Prompt{
+		gt.PromptFromText(fmt.Sprintf(summarizeContentURLFormat, desiredLanguage, url)),
+	}
+
+	// use url context
+	options := gt.NewGenerationOptions()
+	options.Tools = []*genai.Tool{
+		{
+			URLContext: &genai.URLContext{},
+		},
+	}
+
+	outBuffer := new(strings.Builder)
+
+	// generate
+	var result *genai.GenerateContentResponse
+	if result, err = gtc.Generate(
+		ctx,
+		prompts,
+		options,
+	); err == nil {
+		if len(result.Candidates) > 0 {
+			candidate := result.Candidates[0]
+
+			if content := candidate.Content; content != nil {
+				for _, part := range content.Parts {
+					if len(part.Text) > 0 {
+						outBuffer.WriteString(part.Text)
+					}
+				}
+			} else {
+				if candidate.FinishReason != genai.FinishReasonUnspecified {
+					err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
+				} else {
+					err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+				}
+			}
+		}
+	}
+
+	summarizedContent = outBuffer.String()
+
+	return title, summarizedContent, err
 }
 
 // translate and summarize given youtube url
@@ -241,7 +315,7 @@ func (c *Client) translateAndSummarizeYouTube(
 		}
 	}
 
-	return
+	return translatedTitle, summarizedContent, err
 }
 
 const (

@@ -27,27 +27,25 @@ func TestSummarize(t *testing.T) {
 			`meinside/rss-feeds-go: A go utility package for handling RSS feeds.`,
 			`https://github.com/meinside/rss-feeds-go`,
 		); err != nil {
-			t.Errorf("failed to summarize: %s", err)
+			t.Errorf("failed to summarize url content: %s", err)
 		} else {
 			log.Printf(">>> translated title: %s", translatedTitle)
 			log.Printf(">>> summarized content: %s", summarizedContent)
 		}
 
-		// keep the title if something goes wrong with the content
+		// summarize url
 		ctx, cancel = context.WithTimeout(context.TODO(), 60*time.Second)
 		defer cancel()
-		if translatedTitle, summarizedContent, err := client.summarize(
+		if translatedTitle, summarizedContent, err := client.summarizeURL(
 			ctx,
-			`What is the answer to life, the universe, and everything?`,
-			`https://no-sucn-domain/that-will-lead/to/fetch-error`,
+			`meinside/gemini-things-go: A Golang library for generating things with Gemini APIs `,
+			`https://github.com/meinside/gemini-things-go`,
+			`ko_KR`,
 		); err != nil {
-			if translatedTitle != `What is the answer to life, the universe, and everything?` {
-				t.Errorf("should have kept the title, but got '%s'", translatedTitle)
-			}
-			log.Printf(">>> translated title: %s", translatedTitle)
-			log.Printf(">>> summarized content: %s", summarizedContent)
+			t.Errorf("failed to summarize url: %s", err)
 		} else {
-			t.Errorf("should have failed with the wrong url")
+			log.Printf(">>> translated title (untouched): %s", translatedTitle)
+			log.Printf(">>> summarized content (with gemini url context): %s", summarizedContent)
 		}
 
 		// summarize youtube url and translate title
@@ -63,6 +61,44 @@ func TestSummarize(t *testing.T) {
 			log.Printf(">>> translated title: %s", translatedTitle)
 			log.Printf(">>> summarized content: %s", summarizedContent)
 		}
+
+		// wrong urls can be successfully summarized with gemini url context
+		// (but there will be error messages from gemini)
+		ctx, cancel = context.WithTimeout(context.TODO(), 60*time.Second)
+		defer cancel()
+		if translatedTitle, summarizedContent, err := client.summarize(
+			ctx,
+			`What is the answer to life, the universe, and everything?`,
+			`https://no-sucn-domain/that-will-lead/to/fetch-error`,
+		); err != nil {
+			t.Errorf("should have failed with the wrong url")
+		} else {
+			if translatedTitle != `What is the answer to life, the universe, and everything?` {
+				t.Errorf("should have kept the title, but got '%s'", translatedTitle)
+			}
+			log.Printf(">>> translated title (untouched): %s", translatedTitle)
+			log.Printf(">>> summarized content (error message): %s", summarizedContent)
+		}
+
+		// when gemini fails,
+		// (will keep the original title)
+		ctx, cancel = context.WithTimeout(context.TODO(), 60*time.Second)
+		defer cancel()
+		client.googleAIAPIKeys = []string{"intentionally-wrong-api-key"}
+		if translatedTitle, summarizedContent, err := client.summarize(
+			ctx,
+			`What is the answer to life, the universe, and everything?`,
+			`https://no-sucn-domain/that-will-lead/to/fetch-error`,
+		); err != nil {
+			if translatedTitle != `What is the answer to life, the universe, and everything?` {
+				t.Errorf("should have kept the title, but got '%s'", translatedTitle)
+			}
+			log.Printf(">>> translated title (untouched): %s", translatedTitle)
+			log.Printf(">>> summarized content (api error): %s", summarizedContent)
+		} else {
+			t.Errorf("should have failed with the wrong url")
+		}
+
 	} else {
 		log.Printf("> Provide a google ai api key: 'API_KEY' as an environment variable for testing gemini features.")
 	}
