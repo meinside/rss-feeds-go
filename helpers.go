@@ -252,6 +252,11 @@ func isYouTubeURL(url string) bool {
 		"www.youtube.com",
 		"youtu.be",
 	}, func(e string) bool {
+		// NOTE: ignore youtube playlists
+		if strings.Contains(url, "/playlist") {
+			return false
+		}
+
 		return strings.Contains(url, e)
 	})
 }
