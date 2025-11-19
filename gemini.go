@@ -91,65 +91,69 @@ func (c *Client) translateAndSummarize(
 	for filename, file := range promptFiles {
 		prompts = append(prompts, gt.PromptFromFile(filename, file))
 	}
+	var contents []*genai.Content
+	if contents, err = gtc.PromptsToContents(ctx, prompts, nil); err == nil {
+		// set function call
+		options := genOptions()
 
-	// set function call
-	options := genOptions()
+		// generate
+		var result *genai.GenerateContentResponse
+		if result, err = gtc.Generate(
+			ctx,
+			contents,
+			options,
+		); err == nil {
+			if len(result.Candidates) > 0 {
+				candidate := result.Candidates[0]
 
-	// generate
-	var result *genai.GenerateContentResponse
-	if result, err = gtc.Generate(
-		ctx,
-		prompts,
-		options,
-	); err == nil {
-		if len(result.Candidates) > 0 {
-			candidate := result.Candidates[0]
+				if content := candidate.Content; content != nil {
+					for _, part := range content.Parts {
+						if part.FunctionCall != nil {
+							fn := part.FunctionCall
 
-			if content := candidate.Content; content != nil {
-				for _, part := range content.Parts {
-					if part.FunctionCall != nil {
-						fn := part.FunctionCall
-
-						if fn.Name != fnNameTranslateTitleAndSummarizeContent {
-							err = fmt.Errorf("not an expected function name: '%s'", fn.Name)
-							break
-						} else {
-							// get trasnlated title
-							if arg, e := gt.FuncArg[string](fn.Args, fnParamNameTranslatedTitle); e == nil {
-								if arg != nil {
-									translatedTitle = *arg
+							if fn.Name != fnNameTranslateTitleAndSummarizeContent {
+								err = fmt.Errorf("not an expected function name: '%s'", fn.Name)
+								break
+							} else {
+								// get trasnlated title
+								if arg, e := gt.FuncArg[string](fn.Args, fnParamNameTranslatedTitle); e == nil {
+									if arg != nil {
+										translatedTitle = *arg
+									} else {
+										err = fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
+										break
+									}
 								} else {
-									err = fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
+									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
 									break
 								}
-							} else {
-								err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
-								break
-							}
 
-							// get summarized content
-							if arg, e := gt.FuncArg[string](fn.Args, fnParamNameSummarizedContent); e == nil {
-								if arg != nil {
-									summarizedContent = *arg
+								// get summarized content
+								if arg, e := gt.FuncArg[string](fn.Args, fnParamNameSummarizedContent); e == nil {
+									if arg != nil {
+										summarizedContent = *arg
+									} else {
+										err = fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
+										break
+									}
 								} else {
-									err = fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
+									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
 									break
 								}
-							} else {
-								err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
-								break
 							}
 						}
 					}
-				}
-			} else {
-				if candidate.FinishReason != genai.FinishReasonUnspecified {
-					err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
 				} else {
-					err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+					if candidate.FinishReason != genai.FinishReasonUnspecified {
+						err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
+					} else {
+						err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+					}
 				}
 			}
 		}
+	} else {
+		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
 	}
 
 	return translatedTitle, summarizedContent, err
@@ -184,43 +188,48 @@ func (c *Client) summarizeURL(
 		gt.PromptFromText(fmt.Sprintf(summarizeContentURLFormat, desiredLanguage, url)),
 	}
 
-	// use url context
-	options := gt.NewGenerationOptions()
-	options.Tools = []*genai.Tool{
-		{
-			URLContext: &genai.URLContext{},
-		},
-	}
+	var contents []*genai.Content
+	if contents, err = gtc.PromptsToContents(ctx, prompts, nil); err == nil {
+		// use url context
+		options := gt.NewGenerationOptions()
+		options.Tools = []*genai.Tool{
+			{
+				URLContext: &genai.URLContext{},
+			},
+		}
 
-	outBuffer := new(strings.Builder)
+		outBuffer := new(strings.Builder)
 
-	// generate
-	var result *genai.GenerateContentResponse
-	if result, err = gtc.Generate(
-		ctx,
-		prompts,
-		options,
-	); err == nil {
-		if len(result.Candidates) > 0 {
-			candidate := result.Candidates[0]
+		// generate
+		var result *genai.GenerateContentResponse
+		if result, err = gtc.Generate(
+			ctx,
+			contents,
+			options,
+		); err == nil {
+			if len(result.Candidates) > 0 {
+				candidate := result.Candidates[0]
 
-			if content := candidate.Content; content != nil {
-				for _, part := range content.Parts {
-					if len(part.Text) > 0 {
-						outBuffer.WriteString(part.Text)
+				if content := candidate.Content; content != nil {
+					for _, part := range content.Parts {
+						if len(part.Text) > 0 {
+							outBuffer.WriteString(part.Text)
+						}
 					}
-				}
-			} else {
-				if candidate.FinishReason != genai.FinishReasonUnspecified {
-					err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
 				} else {
-					err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+					if candidate.FinishReason != genai.FinishReasonUnspecified {
+						err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
+					} else {
+						err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+					}
 				}
 			}
 		}
-	}
 
-	summarizedContent = outBuffer.String()
+		summarizedContent = outBuffer.String()
+	} else {
+		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
+	}
 
 	return title, summarizedContent, err
 }
@@ -255,64 +264,69 @@ func (c *Client) translateAndSummarizeYouTube(
 		gt.PromptFromURI(url),
 	}
 
-	// set function call
-	options := genOptions()
+	var contents []*genai.Content
+	if contents, err = gtc.PromptsToContents(ctx, prompts, nil); err == nil {
+		// set function call
+		options := genOptions()
 
-	// generate
-	var result *genai.GenerateContentResponse
-	if result, err = gtc.Generate(
-		ctx,
-		prompts,
-		options,
-	); err == nil {
-		if len(result.Candidates) > 0 {
-			candidate := result.Candidates[0]
+		// generate
+		var result *genai.GenerateContentResponse
+		if result, err = gtc.Generate(
+			ctx,
+			contents,
+			options,
+		); err == nil {
+			if len(result.Candidates) > 0 {
+				candidate := result.Candidates[0]
 
-			if content := candidate.Content; content != nil {
-				for _, part := range content.Parts {
-					if part.FunctionCall != nil {
-						fn := part.FunctionCall
+				if content := candidate.Content; content != nil {
+					for _, part := range content.Parts {
+						if part.FunctionCall != nil {
+							fn := part.FunctionCall
 
-						if fn.Name != fnNameTranslateTitleAndSummarizeContent {
-							err = fmt.Errorf("not an expected function name: '%s'", fn.Name)
-							break
-						} else {
-							// get trasnlated title
-							if arg, e := gt.FuncArg[string](fn.Args, fnParamNameTranslatedTitle); e == nil {
-								if arg != nil {
-									translatedTitle = *arg
+							if fn.Name != fnNameTranslateTitleAndSummarizeContent {
+								err = fmt.Errorf("not an expected function name: '%s'", fn.Name)
+								break
+							} else {
+								// get trasnlated title
+								if arg, e := gt.FuncArg[string](fn.Args, fnParamNameTranslatedTitle); e == nil {
+									if arg != nil {
+										translatedTitle = *arg
+									} else {
+										err = fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
+										break
+									}
 								} else {
-									err = fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
+									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
 									break
 								}
-							} else {
-								err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
-								break
-							}
 
-							// get summarized content
-							if arg, e := gt.FuncArg[string](fn.Args, fnParamNameSummarizedContent); e == nil {
-								if arg != nil {
-									summarizedContent = *arg
+								// get summarized content
+								if arg, e := gt.FuncArg[string](fn.Args, fnParamNameSummarizedContent); e == nil {
+									if arg != nil {
+										summarizedContent = *arg
+									} else {
+										err = fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
+										break
+									}
 								} else {
-									err = fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
+									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
 									break
 								}
-							} else {
-								err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
-								break
 							}
 						}
 					}
-				}
-			} else {
-				if candidate.FinishReason != genai.FinishReasonUnspecified {
-					err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
 				} else {
-					err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+					if candidate.FinishReason != genai.FinishReasonUnspecified {
+						err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
+					} else {
+						err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+					}
 				}
 			}
 		}
+	} else {
+		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
 	}
 
 	return translatedTitle, summarizedContent, err
