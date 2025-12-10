@@ -53,6 +53,7 @@ referring to the summarized content:
 
 	summarizedContentEmpty = "Summarized content was empty."
 
+	requestTimeoutSeconds              = 30
 	generationTimeoutSeconds           = 3 * 60 // timeout seconds for generation (summary + translation)
 	generationTimeoutSecondsForYoutube = 5 * 60 // timeout seconds for summary of youtube video
 )
@@ -91,15 +92,24 @@ func (c *Client) translateAndSummarize(
 	for filename, file := range promptFiles {
 		prompts = append(prompts, gt.PromptFromFile(filename, file))
 	}
+
+	// context with timeout (prompts => contents)
+	ctxContents, cancelContents := context.WithTimeout(ctx, time.Duration(requestTimeoutSeconds)*time.Second)
+	defer cancelContents()
+
 	var contents []*genai.Content
-	if contents, err = gtc.PromptsToContents(ctx, prompts, nil); err == nil {
+	if contents, err = gtc.PromptsToContents(ctxContents, prompts, nil); err == nil {
 		// set function call
 		options := genOptions()
+
+		// context with timeout (generation)
+		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, time.Duration(generationTimeoutSeconds)*time.Second)
+		defer cancelGenerate()
 
 		// generate
 		var result *genai.GenerateContentResponse
 		if result, err = gtc.Generate(
-			ctx,
+			ctxGenerate,
 			contents,
 			options,
 		); err == nil {
@@ -188,8 +198,12 @@ func (c *Client) summarizeURL(
 		gt.PromptFromText(fmt.Sprintf(summarizeContentURLFormat, desiredLanguage, url)),
 	}
 
+	// context with timeout (prompts => contents)
+	ctxContents, cancelContents := context.WithTimeout(ctx, requestTimeoutSeconds*time.Second)
+	defer cancelContents()
+
 	var contents []*genai.Content
-	if contents, err = gtc.PromptsToContents(ctx, prompts, nil); err == nil {
+	if contents, err = gtc.PromptsToContents(ctxContents, prompts, nil); err == nil {
 		// use url context
 		options := gt.NewGenerationOptions()
 		options.Tools = []*genai.Tool{
@@ -200,10 +214,14 @@ func (c *Client) summarizeURL(
 
 		outBuffer := new(strings.Builder)
 
+		// context with timeout (generation)
+		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
+		defer cancelGenerate()
+
 		// generate
 		var result *genai.GenerateContentResponse
 		if result, err = gtc.Generate(
-			ctx,
+			ctxGenerate,
 			contents,
 			options,
 		); err == nil {

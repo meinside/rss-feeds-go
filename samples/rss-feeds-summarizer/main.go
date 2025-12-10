@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
 	rf "github.com/meinside/rss-feeds-go"
 )
@@ -16,6 +18,8 @@ const (
 	verbose = true
 
 	noSummary = "<<< no summary >>>"
+
+	fetchTimeoutSeconds = 30
 
 	ignoreItemsOlderThanDays = 7
 )
@@ -34,7 +38,11 @@ func main() {
 		client.SetDesiredLanguage(desiredLanguage)
 		client.SetVerbose(verbose)
 
-		if feeds, err := client.FetchFeeds(true, ignoreItemsOlderThanDays); err == nil {
+		// context with timeout (fetch)
+		ctxFetch, cancelFetch := context.WithTimeout(context.Background(), fetchTimeoutSeconds*time.Second)
+		defer cancelFetch()
+
+		if feeds, err := client.FetchFeeds(ctxFetch, true, ignoreItemsOlderThanDays); err == nil {
 			err := client.SummarizeAndCacheFeeds(feeds)
 			if err != nil {
 				log.Printf("# summary failed with some errors: %s", err)
