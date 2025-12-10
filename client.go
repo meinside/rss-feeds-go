@@ -20,8 +20,7 @@ import (
 )
 
 const (
-	fetchFeedsTimeoutSeconds = 30     // 30 seconds's timeout for fetching feeds
-	summarizeTimeoutSeconds  = 6 * 60 // timeout seconds for summary (should be enough for `get content type + fetch (retry) + generation`)
+	summarizeTimeoutSeconds = 6 * 60 // timeout seconds for summary (should be enough for `get content type + fetch (retry) + generation`)
 
 	defaultSummarizeIntervalSeconds = 10 // 10 seconds' interval between summaries
 	defaultDesiredLanguage          = "English"
@@ -51,7 +50,10 @@ type Client struct {
 }
 
 // NewClient returns a new client with memory cache.
-func NewClient(googleAIAPIKeys []string, feedsURLs []string) *Client {
+func NewClient(
+	googleAIAPIKeys []string,
+	feedsURLs []string,
+) *Client {
 	return &Client{
 		feedsURLs: feedsURLs,
 		cache:     newMemCache(),
@@ -65,7 +67,11 @@ func NewClient(googleAIAPIKeys []string, feedsURLs []string) *Client {
 }
 
 // NewClientWithDB returns a new client with SQLite DB cache.
-func NewClientWithDB(googleAIAPIKeys []string, feedsURLs []string, dbFilepath string) (client *Client, err error) {
+func NewClientWithDB(
+	googleAIAPIKeys []string,
+	feedsURLs []string,
+	dbFilepath string,
+) (client *Client, err error) {
 	if dbCache, err := newDBCache(dbFilepath); err == nil {
 		return &Client{
 			feedsURLs: feedsURLs,
@@ -104,18 +110,20 @@ func (c *Client) SetVerbose(v bool) {
 }
 
 // FetchFeeds fetches feeds.
-func (c *Client) FetchFeeds(ignoreAlreadyCached bool, ignoreItemsPublishedBeforeDays uint) (feeds []gofeed.Feed, err error) {
+func (c *Client) FetchFeeds(
+	ctx context.Context,
+	ignoreAlreadyCached bool,
+	ignoreItemsPublishedBeforeDays uint,
+) (feeds []gofeed.Feed, err error) {
 	feeds = []gofeed.Feed{}
 	errs := []error{}
 
-	client := &http.Client{
-		Timeout: time.Duration(fetchFeedsTimeoutSeconds) * time.Second,
-	}
+	client := http.DefaultClient
 
 	for _, url := range c.feedsURLs {
 		v(c.verbose, "fetching feeds from url: %s", url)
 
-		req, err := http.NewRequest("GET", url, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create request: %w", err)
 		}
@@ -181,11 +189,16 @@ func (c *Client) FetchFeeds(ignoreAlreadyCached bool, ignoreItemsPublishedBefore
 
 // SummarizeAndCacheFeeds summarizes given feeds items and caches them.
 //
+// Each feed item will be summarized with a timeout of `summarizeTimeoutSeconds` seconds.
+//
 // If summary fails, the original content prepended with the error message will be cached.
 //
 // If there was a retriable error(eg. model overloads), it will return immediately.
 // (remaining feed items will be retried later)
-func (c *Client) SummarizeAndCacheFeeds(feeds []gofeed.Feed, urlScrapper ...*ssg.Scrapper) (err error) {
+func (c *Client) SummarizeAndCacheFeeds(
+	feeds []gofeed.Feed,
+	urlScrapper ...*ssg.Scrapper,
+) (err error) {
 	errs := []error{}
 
 outer:
@@ -254,18 +267,17 @@ func (c *Client) summarize(
 	title, url string,
 	urlScrapper ...*ssg.Scrapper,
 ) (translatedTitle, summarizedContent string, err error) {
-	var cancel context.CancelFunc
-
 	if isYouTubeURL(url) {
 		url = normalizeYouTubeURL(url)
 
 		v(c.verbose, "summarizing youtube url: %s", url)
 
-		ctx, cancel = context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
-		defer cancel()
+		// context with timeout
+		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
+		defer cancelGenerate()
 
 		// summarize & translate given title and youtube url
-		if translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctx, title, url); err == nil {
+		if translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctxGenerate, title, url); err == nil {
 			return translatedTitle, summarizedContent, err
 		} else {
 			v(c.verbose, "failed to generate summary from youtube url: '%s', error: %s", url, gt.ErrToStr(err))
@@ -273,8 +285,9 @@ func (c *Client) summarize(
 	} else {
 		v(c.verbose, "summarizing content of url: %s", url)
 
-		ctx, cancel = context.WithTimeout(ctx, generationTimeoutSecondsForYoutube*time.Second)
-		defer cancel()
+		// context with timeout
+		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSecondsForYoutube*time.Second)
+		defer cancelGenerate()
 
 		// fetch the content of given url and summarize & translate it
 		var fetched []byte
@@ -283,7 +296,7 @@ func (c *Client) summarize(
 			if isTextFormattableContent(contentType) { // use text prompt
 				prompt := fmt.Sprintf(summarizeContentPromptFormat, c.desiredLanguage, title, string(fetched))
 
-				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctx, prompt); err == nil {
+				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt); err == nil {
 					// FIXME: sometimes translated/summarized results are empty
 					if len(translatedTitle) <= 0 {
 						translatedTitle = title
@@ -299,7 +312,7 @@ func (c *Client) summarize(
 			} else if isFileContent(contentType) { // use prompt with files
 				prompt := fmt.Sprintf(summarizeContentFilePromptFormat, c.desiredLanguage, title)
 
-				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctx, prompt, fetched); err == nil {
+				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt, fetched); err == nil {
 					// FIXME: sometimes translated/summarized results are empty
 					if len(translatedTitle) <= 0 {
 						translatedTitle = title
@@ -316,7 +329,7 @@ func (c *Client) summarize(
 				err = fmt.Errorf("not a summarizable content type: %s", contentType)
 			}
 		} else {
-			if translatedTitle, summarizedContent, err = c.summarizeURL(ctx, title, url, c.desiredLanguage); err == nil {
+			if translatedTitle, summarizedContent, err = c.summarizeURL(ctxGenerate, title, url, c.desiredLanguage); err == nil {
 				// FIXME: sometimes summarized results are empty
 				if len(summarizedContent) <= 0 {
 					summarizedContent = summarizedContentEmpty
@@ -334,7 +347,11 @@ func (c *Client) summarize(
 }
 
 // fetch url content with or without url scrapper
-func (c *Client) fetch(remainingRetryCount int, url string, urlScrapper ...*ssg.Scrapper) (scrapped []byte, contentType string, err error) {
+func (c *Client) fetch(
+	remainingRetryCount int,
+	url string,
+	urlScrapper ...*ssg.Scrapper,
+) (scrapped []byte, contentType string, err error) {
 	contentType, _ = getContentType(url, c.verbose)
 
 	if len(urlScrapper) > 0 && strings.HasPrefix(contentType, "text/html") { // if scrapper is given, and content-type is HTML, use it
@@ -395,7 +412,10 @@ func (c *Client) DeleteOldCachedItems() {
 }
 
 // PublishXML returns XML bytes (application/rss+xml) of given cached items.
-func (c *Client) PublishXML(title, link, description, author, email string, items []CachedItem) (bytes []byte, err error) {
+func (c *Client) PublishXML(
+	title, link, description, author, email string,
+	items []CachedItem,
+) (bytes []byte, err error) {
 	feed := &feeds.Feed{
 		Title:       title,
 		Link:        &feeds.Link{Href: link},
