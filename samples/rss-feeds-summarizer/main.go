@@ -11,7 +11,7 @@ import (
 const (
 	googleAIAPIKey = "abcdefghijklmnopqrstuvwxyz0123456789" // NOTE: change it to yours
 
-	googleAIModel   = "gemini-2.0-flash"
+	googleAIModel   = "gemini-2.5-flash"
 	dbFilepath      = "./test.db"
 	desiredLanguage = "Korean"
 	// verbose         = false
