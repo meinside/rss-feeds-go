@@ -12,7 +12,7 @@ import (
 
 // test summarization features
 func TestSummarize(t *testing.T) {
-	googleAIAPIKey := os.Getenv("API_KEY")
+	googleAIAPIKey := os.Getenv("GEMINI_API_KEY")
 
 	if googleAIAPIKey != "" {
 		client := NewClient([]string{googleAIAPIKey}, nil)

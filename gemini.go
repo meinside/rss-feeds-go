@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultGoogleAIModel = "gemini-2.5-flash"
+	defaultGoogleAIModel = "gemini-3-flash-preview"
 
 	systemInstructionFormatForSummary = `You are a precise and useful agent for summarizing and translating contents retrieved from web sites or RSS/Atom feeds.
 
@@ -51,7 +51,7 @@ referring to the summarized content:
 
 <content:title>%[2]s</content:title>`
 
-	summarizedContentEmpty = "Summarized content was empty."
+	summarizedContentEmpty = `Summarized content was empty.`
 
 	requestTimeoutSeconds              = 30
 	generationTimeoutSeconds           = 3 * 60 // timeout seconds for generation (summary + translation)
