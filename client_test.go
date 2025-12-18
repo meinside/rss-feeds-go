@@ -100,6 +100,6 @@ func TestSummarize(t *testing.T) {
 		}
 
 	} else {
-		log.Printf("> Provide a google ai api key: 'API_KEY' as an environment variable for testing gemini features.")
+		log.Printf("> Provide a google ai api key: 'GEMINI_API_KEY' as an environment variable for testing gemini features.")
 	}
 }

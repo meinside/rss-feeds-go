@@ -40,13 +40,14 @@ type Client struct {
 	cache     FeedsItemsCache
 
 	googleAIAPIKeys []string
-	googleAIModel   string
+	googleAIModels  []string
 
 	desiredLanguage          string
 	summarizeIntervalSeconds int
 	verbose                  bool
 
 	_requestCountForAPIKeyRotation int
+	_requestCountForModelRotation  int
 }
 
 // NewClient returns a new client with memory cache.
@@ -59,7 +60,7 @@ func NewClient(
 		cache:     newMemCache(),
 
 		googleAIAPIKeys: googleAIAPIKeys,
-		googleAIModel:   defaultGoogleAIModel,
+		googleAIModels:  []string{defaultGoogleAIModel},
 
 		desiredLanguage:          defaultDesiredLanguage,
 		summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
@@ -78,7 +79,7 @@ func NewClientWithDB(
 			cache:     dbCache,
 
 			googleAIAPIKeys: googleAIAPIKeys,
-			googleAIModel:   defaultGoogleAIModel,
+			googleAIModels:  []string{defaultGoogleAIModel},
 
 			desiredLanguage:          defaultDesiredLanguage,
 			summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
@@ -88,9 +89,9 @@ func NewClientWithDB(
 	}
 }
 
-// SetGoogleAIModel sets the client's Google AI model.
-func (c *Client) SetGoogleAIModel(model string) {
-	c.googleAIModel = model
+// SetGoogleAIModels sets the client's Google AI models.
+func (c *Client) SetGoogleAIModels(models []string) {
+	c.googleAIModels = models
 }
 
 // SetDesiredLanguage sets the client's desired language for summaries.
@@ -239,7 +240,7 @@ outer:
 				summarizedContent = fmt.Sprintf(
 					"%s\n\n(summarized with **%s**, %s)",
 					summarizedContent,
-					c.googleAIModel,
+					c.rotatedModel(),
 					time.Now().Format("2006-01-02 15:04:05 (Mon) MST"),
 				)
 			}
@@ -390,6 +391,14 @@ func (c *Client) fetch(
 func (c *Client) rotatedAPIKey() string {
 	rotated := c.googleAIAPIKeys[c._requestCountForAPIKeyRotation%len(c.googleAIAPIKeys)]
 	c._requestCountForAPIKeyRotation++
+
+	return rotated
+}
+
+// return a rotated model
+func (c *Client) rotatedModel() string {
+	rotated := c.googleAIModels[c._requestCountForModelRotation%len(c.googleAIModels)]
+	c._requestCountForModelRotation++
 
 	return rotated
 }
