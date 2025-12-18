@@ -66,7 +66,7 @@ func (c *Client) translateAndSummarize(
 ) (translatedTitle, summarizedContent string, err error) {
 	gtc, err := gt.NewClient(
 		c.rotatedAPIKey(),
-		gt.WithModel(c.googleAIModel),
+		gt.WithModel(c.rotatedModel()),
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
@@ -178,7 +178,7 @@ func (c *Client) summarizeURL(
 ) (untouchedTitle string, summarizedContent string, err error) {
 	gtc, err := gt.NewClient(
 		c.rotatedAPIKey(),
-		gt.WithModel(c.googleAIModel),
+		gt.WithModel(c.rotatedModel()),
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
@@ -260,7 +260,7 @@ func (c *Client) translateAndSummarizeYouTube(
 ) (translatedTitle, summarizedContent string, err error) {
 	gtc, err := gt.NewClient(
 		c.rotatedAPIKey(),
-		gt.WithModel(c.googleAIModel),
+		gt.WithModel(c.rotatedModel()),
 	)
 	if err != nil {
 		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
