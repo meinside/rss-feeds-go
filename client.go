@@ -213,7 +213,7 @@ outer:
 			defer cancel()
 
 			// summarize,
-			translatedTitle, summarizedContent, err := c.summarize(
+			usedModel, translatedTitle, summarizedContent, err := c.summarize(
 				ctx,
 				item.Title,
 				item.Link,
@@ -224,7 +224,7 @@ outer:
 				//   - http 503 ('The model is overloaded. Please try again later.')
 				// for retyring later
 				if gt.IsModelOverloaded(err) {
-					v(c.verbose, "skipping remaining feed items due to overloaded model (will be retried later)")
+					v(c.verbose, "skipping remaining feed items due to overloaded model %s (will be retried later)", usedModel)
 
 					errs = append(errs, err)
 
@@ -240,7 +240,7 @@ outer:
 				summarizedContent = fmt.Sprintf(
 					"%s\n\n(summarized with **%s**, %s)",
 					summarizedContent,
-					c.rotatedModel(),
+					usedModel,
 					time.Now().Format("2006-01-02 15:04:05 (Mon) MST"),
 				)
 			}
@@ -267,7 +267,7 @@ func (c *Client) summarize(
 	ctx context.Context,
 	title, url string,
 	urlScrapper ...*ssg.Scrapper,
-) (translatedTitle, summarizedContent string, err error) {
+) (usedModel string, translatedTitle, summarizedContent string, err error) {
 	if isYouTubeURL(url) {
 		url = normalizeYouTubeURL(url)
 
@@ -278,8 +278,8 @@ func (c *Client) summarize(
 		defer cancelGenerate()
 
 		// summarize & translate given title and youtube url
-		if translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctxGenerate, title, url); err == nil {
-			return translatedTitle, summarizedContent, err
+		if usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctxGenerate, title, url); err == nil {
+			return usedModel, translatedTitle, summarizedContent, err
 		} else {
 			v(c.verbose, "failed to generate summary from youtube url: '%s', error: %s", url, gt.ErrToStr(err))
 		}
@@ -297,7 +297,7 @@ func (c *Client) summarize(
 			if isTextFormattableContent(contentType) { // use text prompt
 				prompt := fmt.Sprintf(summarizeContentPromptFormat, c.desiredLanguage, title, string(fetched))
 
-				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt); err == nil {
+				if usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt); err == nil {
 					// FIXME: sometimes translated/summarized results are empty
 					if len(translatedTitle) <= 0 {
 						translatedTitle = title
@@ -306,14 +306,14 @@ func (c *Client) summarize(
 						summarizedContent = summarizedContentEmpty
 					}
 
-					return translatedTitle, summarizedContent, err
+					return usedModel, translatedTitle, summarizedContent, err
 				} else {
 					v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, gt.ErrToStr(err))
 				}
 			} else if isFileContent(contentType) { // use prompt with files
 				prompt := fmt.Sprintf(summarizeContentFilePromptFormat, c.desiredLanguage, title)
 
-				if translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt, fetched); err == nil {
+				if usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt, fetched); err == nil {
 					// FIXME: sometimes translated/summarized results are empty
 					if len(translatedTitle) <= 0 {
 						translatedTitle = title
@@ -322,7 +322,7 @@ func (c *Client) summarize(
 						summarizedContent = summarizedContentEmpty
 					}
 
-					return translatedTitle, summarizedContent, err
+					return usedModel, translatedTitle, summarizedContent, err
 				} else {
 					v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, gt.ErrToStr(err))
 				}
@@ -330,13 +330,13 @@ func (c *Client) summarize(
 				err = fmt.Errorf("not a summarizable content type: %s", contentType)
 			}
 		} else {
-			if translatedTitle, summarizedContent, err = c.summarizeURL(ctxGenerate, title, url, c.desiredLanguage); err == nil {
+			if usedModel, translatedTitle, summarizedContent, err = c.summarizeURL(ctxGenerate, title, url, c.desiredLanguage); err == nil {
 				// FIXME: sometimes summarized results are empty
 				if len(summarizedContent) <= 0 {
 					summarizedContent = summarizedContentEmpty
 				}
 
-				return translatedTitle, summarizedContent, err
+				return usedModel, translatedTitle, summarizedContent, err
 			} else {
 				v(c.verbose, "failed to generate summary with url: '%s', error: %s", url, gt.ErrToStr(err))
 			}
@@ -344,7 +344,7 @@ func (c *Client) summarize(
 	}
 
 	// return error message
-	return title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
+	return usedModel, title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
 }
 
 // fetch url content with or without url scrapper

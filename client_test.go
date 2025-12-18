@@ -22,7 +22,7 @@ func TestSummarize(t *testing.T) {
 		// summarize content and translate title
 		ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
 		defer cancel()
-		if translatedTitle, summarizedContent, err := client.summarize(
+		if _, translatedTitle, summarizedContent, err := client.summarize(
 			ctx,
 			`meinside/rss-feeds-go: A go utility package for handling RSS feeds.`,
 			`https://github.com/meinside/rss-feeds-go`,
@@ -36,7 +36,7 @@ func TestSummarize(t *testing.T) {
 		// summarize url
 		ctx, cancel = context.WithTimeout(context.TODO(), 60*time.Second)
 		defer cancel()
-		if translatedTitle, summarizedContent, err := client.summarizeURL(
+		if _, translatedTitle, summarizedContent, err := client.summarizeURL(
 			ctx,
 			`meinside/gemini-things-go: A Golang library for generating things with Gemini APIs `,
 			`https://github.com/meinside/gemini-things-go`,
@@ -51,7 +51,7 @@ func TestSummarize(t *testing.T) {
 		// summarize youtube url and translate title
 		ctx, cancel = context.WithTimeout(context.TODO(), 60*time.Second)
 		defer cancel()
-		if translatedTitle, summarizedContent, err := client.summarize(
+		if _, translatedTitle, summarizedContent, err := client.summarize(
 			ctx,
 			`I2C test on Raspberry Pi with Adafruit 8x8 LED Matrix and Ruby`,
 			`https://www.youtube.com/watch?v=fV5rI_5fDI8`,
@@ -66,7 +66,7 @@ func TestSummarize(t *testing.T) {
 		// (but there will be error messages from gemini)
 		ctx, cancel = context.WithTimeout(context.TODO(), 60*time.Second)
 		defer cancel()
-		if translatedTitle, summarizedContent, err := client.summarize(
+		if _, translatedTitle, summarizedContent, err := client.summarize(
 			ctx,
 			`What is the answer to life, the universe, and everything?`,
 			`https://no-sucn-domain/that-will-lead/to/fetch-error`,
@@ -85,7 +85,7 @@ func TestSummarize(t *testing.T) {
 		ctx, cancel = context.WithTimeout(context.TODO(), 60*time.Second)
 		defer cancel()
 		client.googleAIAPIKeys = []string{"intentionally-wrong-api-key"}
-		if translatedTitle, summarizedContent, err := client.summarize(
+		if _, translatedTitle, summarizedContent, err := client.summarize(
 			ctx,
 			`What is the answer to life, the universe, and everything?`,
 			`https://no-sucn-domain/that-will-lead/to/fetch-error`,
