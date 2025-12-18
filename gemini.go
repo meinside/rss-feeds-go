@@ -63,13 +63,15 @@ func (c *Client) translateAndSummarize(
 	ctx context.Context,
 	prompt string,
 	files ...[]byte,
-) (translatedTitle, summarizedContent string, err error) {
+) (usedModel, translatedTitle, summarizedContent string, err error) {
+	usedModel = c.rotatedModel()
+
 	gtc, err := gt.NewClient(
 		c.rotatedAPIKey(),
-		gt.WithModel(c.rotatedModel()),
+		gt.WithModel(usedModel),
 	)
 	if err != nil {
-		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
+		return usedModel, "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
 	}
 	setCustomFileConverters(gtc)
 
@@ -166,7 +168,7 @@ func (c *Client) translateAndSummarize(
 		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
 	}
 
-	return translatedTitle, summarizedContent, err
+	return usedModel, translatedTitle, summarizedContent, err
 }
 
 // summarize given url
@@ -175,13 +177,15 @@ func (c *Client) summarizeURL(
 	title string,
 	url string,
 	desiredLanguage string,
-) (untouchedTitle string, summarizedContent string, err error) {
+) (usedModel, untouchedTitle string, summarizedContent string, err error) {
+	usedModel = c.rotatedModel()
+
 	gtc, err := gt.NewClient(
 		c.rotatedAPIKey(),
-		gt.WithModel(c.rotatedModel()),
+		gt.WithModel(usedModel),
 	)
 	if err != nil {
-		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
+		return usedModel, "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
 	}
 
 	defer func() {
@@ -249,7 +253,7 @@ func (c *Client) summarizeURL(
 		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
 	}
 
-	return title, summarizedContent, err
+	return usedModel, title, summarizedContent, err
 }
 
 // translate and summarize given youtube url
@@ -257,13 +261,15 @@ func (c *Client) translateAndSummarizeYouTube(
 	ctx context.Context,
 	title string,
 	url string,
-) (translatedTitle, summarizedContent string, err error) {
+) (usedModel, translatedTitle, summarizedContent string, err error) {
+	usedModel = c.rotatedModel()
+
 	gtc, err := gt.NewClient(
 		c.rotatedAPIKey(),
-		gt.WithModel(c.rotatedModel()),
+		gt.WithModel(usedModel),
 	)
 	if err != nil {
-		return "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
+		return usedModel, "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
 	}
 	setCustomFileConverters(gtc)
 
@@ -347,7 +353,7 @@ func (c *Client) translateAndSummarizeYouTube(
 		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
 	}
 
-	return translatedTitle, summarizedContent, err
+	return usedModel, translatedTitle, summarizedContent, err
 }
 
 const (
