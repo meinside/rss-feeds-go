@@ -46,8 +46,7 @@ type Client struct {
 	summarizeIntervalSeconds int
 	verbose                  bool
 
-	_requestCountForAPIKeyRotation int
-	_requestCountForModelRotation  int
+	_numRequests int
 }
 
 // NewClient returns a new client with memory cache.
@@ -387,20 +386,14 @@ func (c *Client) fetch(
 	return scrapped, contentType, err
 }
 
-// return a rotated api key
-func (c *Client) rotatedAPIKey() string {
-	rotated := c.googleAIAPIKeys[c._requestCountForAPIKeyRotation%len(c.googleAIAPIKeys)]
-	c._requestCountForAPIKeyRotation++
+// get rotated api key and model
+func (c *Client) rotatedAPIKeyAndModel() (rotatedAPIKey, rotatedModel string) {
+	defer func() { c._numRequests++ }()
 
-	return rotated
-}
+	rotatedAPIKey = c.googleAIAPIKeys[c._numRequests%len(c.googleAIAPIKeys)]
+	rotatedModel = c.googleAIModels[c._numRequests%len(c.googleAIModels)]
 
-// return a rotated model
-func (c *Client) rotatedModel() string {
-	rotated := c.googleAIModels[c._requestCountForModelRotation%len(c.googleAIModels)]
-	c._requestCountForModelRotation++
-
-	return rotated
+	return rotatedAPIKey, rotatedModel
 }
 
 // ListCachedItems lists cached items.

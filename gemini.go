@@ -64,10 +64,11 @@ func (c *Client) translateAndSummarize(
 	prompt string,
 	files ...[]byte,
 ) (usedModel, translatedTitle, summarizedContent string, err error) {
-	usedModel = c.rotatedModel()
+	var usedAPIKey string
+	usedAPIKey, usedModel = c.rotatedAPIKeyAndModel()
 
 	gtc, err := gt.NewClient(
-		c.rotatedAPIKey(),
+		usedAPIKey,
 		gt.WithModel(usedModel),
 	)
 	if err != nil {
@@ -178,10 +179,11 @@ func (c *Client) summarizeURL(
 	url string,
 	desiredLanguage string,
 ) (usedModel, untouchedTitle string, summarizedContent string, err error) {
-	usedModel = c.rotatedModel()
+	var usedAPIKey string
+	usedAPIKey, usedModel = c.rotatedAPIKeyAndModel()
 
 	gtc, err := gt.NewClient(
-		c.rotatedAPIKey(),
+		usedAPIKey,
 		gt.WithModel(usedModel),
 	)
 	if err != nil {
@@ -262,10 +264,11 @@ func (c *Client) translateAndSummarizeYouTube(
 	title string,
 	url string,
 ) (usedModel, translatedTitle, summarizedContent string, err error) {
-	usedModel = c.rotatedModel()
+	var usedAPIKey string
+	usedAPIKey, usedModel = c.rotatedAPIKeyAndModel()
 
 	gtc, err := gt.NewClient(
-		c.rotatedAPIKey(),
+		usedAPIKey,
 		gt.WithModel(usedModel),
 	)
 	if err != nil {
