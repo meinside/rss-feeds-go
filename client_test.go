@@ -13,9 +13,14 @@ import (
 // test summarization features
 func TestSummarize(t *testing.T) {
 	googleAIAPIKey := os.Getenv("GEMINI_API_KEY")
+	googleAIModel := os.Getenv("GEMINI_MODEL")
+	if googleAIModel == "" {
+		googleAIModel = defaultGoogleAIModel
+	}
 
 	if googleAIAPIKey != "" {
 		client := NewClient([]string{googleAIAPIKey}, nil)
+		client.SetGoogleAIModels([]string{googleAIModel})
 		// client.SetDesiredLanguage("en_US")
 		client.SetDesiredLanguage("ko_KR")
 
