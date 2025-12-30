@@ -211,10 +211,11 @@ func (c *Client) summarizeURL(
 	var contents []*genai.Content
 	if contents, err = gtc.PromptsToContents(ctxContents, prompts, nil); err == nil {
 		// use url context
-		options := gt.NewGenerationOptions()
-		options.Tools = []*genai.Tool{
-			{
-				URLContext: &genai.URLContext{},
+		options := &genai.GenerateContentConfig{
+			Tools: []*genai.Tool{
+				{
+					URLContext: &genai.URLContext{},
+				},
 			},
 		}
 
@@ -288,7 +289,7 @@ func (c *Client) translateAndSummarizeYouTube(
 	// prompts
 	prompts := []gt.Prompt{
 		gt.PromptFromText(fmt.Sprintf(summarizeYouTubePromptFormat, c.desiredLanguage, title)),
-		gt.PromptFromURI(url),
+		gt.PromptFromURI(url, `video/mp4`),
 	}
 
 	var contents []*genai.Content
@@ -369,47 +370,46 @@ const (
 )
 
 // options for generation
-func genOptions() *gt.GenerationOptions {
-	options := gt.NewGenerationOptions()
-	options.Tools = []*genai.Tool{
-		{
-			FunctionDeclarations: []*genai.FunctionDeclaration{
-				{
-					Name:        fnNameTranslateTitleAndSummarizeContent,
-					Description: fnDescTranslateTitleAndSummarizeContent,
-					Parameters: &genai.Schema{
-						Type: genai.TypeObject,
-						Properties: map[string]*genai.Schema{
-							fnParamNameTranslatedTitle: {
-								Description: fnParamDescTranslatedTitle,
-								Type:        genai.TypeString,
-								Nullable:    genai.Ptr(false),
+func genOptions() *genai.GenerateContentConfig {
+	return &genai.GenerateContentConfig{
+		Tools: []*genai.Tool{
+			{
+				FunctionDeclarations: []*genai.FunctionDeclaration{
+					{
+						Name:        fnNameTranslateTitleAndSummarizeContent,
+						Description: fnDescTranslateTitleAndSummarizeContent,
+						Parameters: &genai.Schema{
+							Type: genai.TypeObject,
+							Properties: map[string]*genai.Schema{
+								fnParamNameTranslatedTitle: {
+									Description: fnParamDescTranslatedTitle,
+									Type:        genai.TypeString,
+									Nullable:    genai.Ptr(false),
+								},
+								fnParamNameSummarizedContent: {
+									Description: fnParamDescSummarizedContent,
+									Type:        genai.TypeString,
+									Nullable:    genai.Ptr(false),
+								},
 							},
-							fnParamNameSummarizedContent: {
-								Description: fnParamDescSummarizedContent,
-								Type:        genai.TypeString,
-								Nullable:    genai.Ptr(false),
+							Required: []string{
+								fnParamNameTranslatedTitle,
+								fnParamNameSummarizedContent,
 							},
-						},
-						Required: []string{
-							fnParamNameTranslatedTitle,
-							fnParamNameSummarizedContent,
 						},
 					},
 				},
 			},
 		},
-	}
-	options.ToolConfig = &genai.ToolConfig{
-		FunctionCallingConfig: &genai.FunctionCallingConfig{
-			Mode: genai.FunctionCallingConfigModeAny,
-			AllowedFunctionNames: []string{
-				fnNameTranslateTitleAndSummarizeContent,
+		ToolConfig: &genai.ToolConfig{
+			FunctionCallingConfig: &genai.FunctionCallingConfig{
+				Mode: genai.FunctionCallingConfigModeAny,
+				AllowedFunctionNames: []string{
+					fnNameTranslateTitleAndSummarizeContent,
+				},
 			},
 		},
 	}
-
-	return options
 }
 
 // generate a system instruction with given configuration
