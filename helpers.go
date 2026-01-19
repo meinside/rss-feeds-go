@@ -19,7 +19,7 @@ import (
 const (
 	urlToTextFormat = "<link url=\"%[1]s\" content-type=\"%[2]s\">\n%[3]s\n</link>"
 
-	fakeUserAgent = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0`
+	fakeUserAgent = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0`
 
 	fetchURLTimeoutSeconds = 10 // timeout seconds for fetching url contents
 
@@ -79,6 +79,10 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 		return nil, contentType, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("User-Agent", fakeUserAgent)
+	req.Header.Set(`Sec-Fetch-Dest`, `document`)
+	req.Header.Set(`Sec-Fetch-Mode`, `navigate`)
+	req.Header.Set(`Set-Fetch-Site`, `none`)
+	req.Header.Set(`Sec-Fetch-User`, `?1`)
 
 	resp, err := client.Do(req)
 	if err != nil {
