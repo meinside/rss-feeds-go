@@ -81,7 +81,7 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 	req.Header.Set("User-Agent", fakeUserAgent)
 	req.Header.Set(`Sec-Fetch-Dest`, `document`)
 	req.Header.Set(`Sec-Fetch-Mode`, `navigate`)
-	req.Header.Set(`Set-Fetch-Site`, `none`)
+	req.Header.Set(`Sec-Fetch-Site`, `none`)
 	req.Header.Set(`Sec-Fetch-User`, `?1`)
 
 	resp, err := client.Do(req)
