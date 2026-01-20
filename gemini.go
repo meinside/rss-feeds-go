@@ -169,6 +169,10 @@ func (c *Client) translateAndSummarize(
 		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
 	}
 
+	if err == nil && len(summarizedContent) <= 0 {
+		err = fmt.Errorf("summarized content was empty")
+	}
+
 	return usedModel, translatedTitle, summarizedContent, err
 }
 
@@ -252,6 +256,10 @@ func (c *Client) summarizeURL(
 		}
 
 		summarizedContent = outBuffer.String()
+
+		if err == nil && len(summarizedContent) <= 0 {
+			err = fmt.Errorf("summarized content was empty")
+		}
 	} else {
 		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
 	}
