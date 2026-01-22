@@ -231,7 +231,8 @@ outer:
 				}
 
 				// prepend error text to the original content
-				summarizedContent = fmt.Sprintf("%s\n\n%s", summarizedContent, item.Description)
+				// summarizedContent = fmt.Sprintf("%s\n\n%s", summarizedContent, item.Description)
+				summarizedContent = fmt.Sprintf("<p>%s</p>\n<hr>\n%s", summarizedContent, item.Description)
 
 				errs = append(errs, fmt.Errorf("failed to summarize item '%s' (%s): %w", item.Title, item.Link, err))
 			} else {
