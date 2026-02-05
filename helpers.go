@@ -20,6 +20,7 @@ const (
 	urlToTextFormat = "<link url=\"%[1]s\" content-type=\"%[2]s\">\n%[3]s\n</link>"
 
 	fakeUserAgent = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:147.0) Gecko/20100101 Firefox/147.0`
+	fakeAccept    = `text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8`
 
 	fetchURLTimeoutSeconds = 10 // timeout seconds for fetching url contents
 
@@ -78,7 +79,9 @@ func fetchURLContent(url string, verbose bool) (content []byte, contentType stri
 	if err != nil {
 		return nil, contentType, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("User-Agent", fakeUserAgent)
+	req.Header.Set(`User-Agent`, fakeUserAgent)
+	req.Header.Set(`Accept`, fakeAccept)
+	req.Header.Set(`Cache-Control`, `no-cache`)
 	req.Header.Set(`Sec-Fetch-Dest`, `document`)
 	req.Header.Set(`Sec-Fetch-Mode`, `navigate`)
 	req.Header.Set(`Sec-Fetch-Site`, `none`)
