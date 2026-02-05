@@ -34,7 +34,7 @@ func main() {
 		},
 		dbFilepath,
 	); err == nil {
-		client.SetGoogleAIModel(googleAIModel)
+		client.SetGoogleAIModels([]string{googleAIModel})
 		client.SetDesiredLanguage(desiredLanguage)
 		client.SetVerbose(verbose)
 
