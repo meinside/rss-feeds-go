@@ -392,12 +392,12 @@ func genOptions() *genai.GenerateContentConfig {
 								fnParamNameTranslatedTitle: {
 									Description: fnParamDescTranslatedTitle,
 									Type:        genai.TypeString,
-									Nullable:    genai.Ptr(false),
+									Nullable:    new(false),
 								},
 								fnParamNameSummarizedContent: {
 									Description: fnParamDescSummarizedContent,
 									Type:        genai.TypeString,
-									Nullable:    genai.Ptr(false),
+									Nullable:    new(false),
 								},
 							},
 							Required: []string{
