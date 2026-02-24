@@ -100,6 +100,9 @@ func (c *Client) translateAndSummarize(
 	ctxContents, cancelContents := context.WithTimeout(ctx, time.Duration(requestTimeoutSeconds)*time.Second)
 	defer cancelContents()
 
+	// output buffer
+	buffer := strings.Builder{}
+
 	var contents []*genai.Content
 	if contents, err = gtc.PromptsToContents(ctxContents, prompts, nil); err == nil {
 		// set function call
@@ -116,52 +119,53 @@ func (c *Client) translateAndSummarize(
 			contents,
 			options,
 		); err == nil {
-			if len(result.Candidates) > 0 {
-				candidate := result.Candidates[0]
-
-				if content := candidate.Content; content != nil {
-					for _, part := range content.Parts {
+		loopCandidates:
+			for _, cand := range result.Candidates {
+				if cand.Content != nil {
+					for _, part := range cand.Content.Parts {
 						if part.FunctionCall != nil {
-							fn := part.FunctionCall
-
-							if fn.Name != fnNameTranslateTitleAndSummarizeContent {
-								err = fmt.Errorf("not an expected function name: '%s'", fn.Name)
+							if part.FunctionCall.Name != fnNameTranslateTitleAndSummarizeContent {
+								err = fmt.Errorf("not an expected function name: '%s'", part.FunctionCall.Name)
 								break
 							} else {
 								// get trasnlated title
-								if arg, e := gt.FuncArg[string](fn.Args, fnParamNameTranslatedTitle); e == nil {
+								if arg, e := gt.FuncArg[string](part.FunctionCall.Args, fnParamNameTranslatedTitle); e == nil {
 									if arg != nil {
 										translatedTitle = *arg
 									} else {
 										err = fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
-										break
+										break loopCandidates
 									}
 								} else {
 									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
-									break
+									break loopCandidates
 								}
 
 								// get summarized content
-								if arg, e := gt.FuncArg[string](fn.Args, fnParamNameSummarizedContent); e == nil {
+								if arg, e := gt.FuncArg[string](part.FunctionCall.Args, fnParamNameSummarizedContent); e == nil {
 									if arg != nil {
-										summarizedContent = *arg
+										buffer.WriteString(*arg) // append text
 									} else {
 										err = fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
-										break
+										break loopCandidates
 									}
 								} else {
 									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
-									break
+									break loopCandidates
 								}
 							}
+						} else {
+							err = fmt.Errorf("no function call in part: %s", Prettify(part))
+							break loopCandidates
 						}
 					}
 				} else {
-					if candidate.FinishReason != genai.FinishReasonUnspecified {
-						err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
+					if cand.FinishReason != genai.FinishReasonUnspecified {
+						err = fmt.Errorf("generation was terminated due to: %s", cand.FinishReason)
 					} else {
-						err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+						err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(cand))
 					}
+					break loopCandidates
 				}
 			}
 		}
@@ -169,11 +173,11 @@ func (c *Client) translateAndSummarize(
 		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
 	}
 
-	if err == nil && len(summarizedContent) <= 0 {
-		err = fmt.Errorf("summarized content was empty")
+	if err == nil && buffer.Len() <= 0 {
+		err = fmt.Errorf("summarized content was empty [%s]", usedModel)
 	}
 
-	return usedModel, translatedTitle, summarizedContent, err
+	return usedModel, translatedTitle, buffer.String(), err
 }
 
 // summarize given url

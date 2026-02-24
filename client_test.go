@@ -49,8 +49,8 @@ func TestSummarize(t *testing.T) {
 		); err != nil {
 			t.Errorf("failed to summarize url: %s", err)
 		} else {
-			log.Printf(">>> translated title (untouched): %s", translatedTitle)
-			log.Printf(">>> summarized content (with gemini url context): %s", summarizedContent)
+			log.Printf(">>> [url context] translated title (untouched): %s", translatedTitle)
+			log.Printf(">>> [url context] summarized content: %s", summarizedContent)
 		}
 
 		// summarize youtube url and translate title
@@ -63,8 +63,8 @@ func TestSummarize(t *testing.T) {
 		); err != nil {
 			t.Errorf("failed to summarize youtube url: %s", err)
 		} else {
-			log.Printf(">>> translated title: %s", translatedTitle)
-			log.Printf(">>> summarized content: %s", summarizedContent)
+			log.Printf(">>> [youtube] translated title: %s", translatedTitle)
+			log.Printf(">>> [youtube] summarized content: %s", summarizedContent)
 		}
 
 		// wrong urls can be successfully summarized with gemini url context
@@ -81,8 +81,8 @@ func TestSummarize(t *testing.T) {
 			if translatedTitle != `What is the answer to life, the universe, and everything?` {
 				t.Errorf("should have kept the title, but got '%s'", translatedTitle)
 			}
-			log.Printf(">>> translated title (untouched): %s", translatedTitle)
-			log.Printf(">>> summarized content (error message): %s", summarizedContent)
+			log.Printf(">>> [wrong url] translated title (untouched): %s", translatedTitle)
+			log.Printf(">>> [wrong url] summarized content (error message): %s", summarizedContent)
 		}
 
 		// when gemini fails,
@@ -98,8 +98,8 @@ func TestSummarize(t *testing.T) {
 			if translatedTitle != `What is the answer to life, the universe, and everything?` {
 				t.Errorf("should have kept the title, but got '%s'", translatedTitle)
 			}
-			log.Printf(">>> translated title (untouched): %s", translatedTitle)
-			log.Printf(">>> summarized content (api error): %s", summarizedContent)
+			log.Printf(">>> [api error] translated title (untouched): %s", translatedTitle)
+			log.Printf(">>> [api error] summarized content (api error): %s", summarizedContent)
 		} else {
 			t.Errorf("should have failed with the wrong url")
 		}
