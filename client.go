@@ -298,7 +298,7 @@ func (c *Client) summarize(
 				prompt := fmt.Sprintf(summarizeContentPromptFormat, c.desiredLanguage, title, string(fetched))
 
 				if usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt); err == nil {
-					// FIXME: sometimes translated/summarized results are empty
+					// FIXME: use the original title if translated title is empty
 					if len(translatedTitle) <= 0 {
 						translatedTitle = title
 					}
@@ -314,7 +314,7 @@ func (c *Client) summarize(
 				prompt := fmt.Sprintf(summarizeContentFilePromptFormat, c.desiredLanguage, title)
 
 				if usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt, fetched); err == nil {
-					// FIXME: sometimes translated/summarized results are empty
+					// FIXME: use the original title if translated title is empty
 					if len(translatedTitle) <= 0 {
 						translatedTitle = title
 					}
