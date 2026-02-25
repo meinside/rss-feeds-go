@@ -155,8 +155,13 @@ func (c *Client) translateAndSummarize(
 								}
 							}
 						} else {
-							err = fmt.Errorf("no function call in part: %s", Prettify(part))
-							break loopCandidates
+							// FIXME: sometimes there is no function call but text in returned part
+							if len(part.Text) > 0 {
+								buffer.WriteString(part.Text) // append text
+							} else {
+								err = fmt.Errorf("no function call nor text in part: %s", Prettify(part))
+								break loopCandidates
+							}
 						}
 					}
 				} else {
