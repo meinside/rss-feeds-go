@@ -438,9 +438,15 @@ func systemInstructionForTranslationAndSummary() string {
 
 // set custom file converters
 func setCustomFileConverters(gtc *gt.Client) {
-	gtc.SetFileConverter("application/xhtml+xml", func(bytes []byte) ([]byte, string, error) {
+	gtc.SetFileConverter(`application/xhtml+xml`, func(filename string, bytes []byte) ([]gt.ConvertedFile, error) {
 		// do nothing but override the content type ("application/xhtml+xml" => "text/html")
-		return bytes, "text/html", nil
+		return []gt.ConvertedFile{
+			{
+				Filename: filename,
+				Bytes:    bytes,
+				MimeType: `text/html`,
+			},
+		}, nil
 	})
 
 	// TODO: add more converters here
