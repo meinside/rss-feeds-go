@@ -124,36 +124,11 @@ func (c *Client) translateAndSummarize(
 				if cand.Content != nil {
 					for _, part := range cand.Content.Parts {
 						if part.FunctionCall != nil {
-							if part.FunctionCall.Name != fnNameTranslateTitleAndSummarizeContent {
-								err = fmt.Errorf("not an expected function name: '%s'", part.FunctionCall.Name)
-								break
-							} else {
-								// get trasnlated title
-								if arg, e := gt.FuncArg[string](part.FunctionCall.Args, fnParamNameTranslatedTitle); e == nil {
-									if arg != nil {
-										translatedTitle = *arg
-									} else {
-										err = fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
-										break loopCandidates
-									}
-								} else {
-									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
-									break loopCandidates
-								}
-
-								// get summarized content
-								if arg, e := gt.FuncArg[string](part.FunctionCall.Args, fnParamNameSummarizedContent); e == nil {
-									if arg != nil {
-										buffer.WriteString(*arg) // append text
-									} else {
-										err = fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
-										break loopCandidates
-									}
-								} else {
-									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
-									break loopCandidates
-								}
+							var content string
+							if translatedTitle, content, err = extractTranslatedTitleAndSummarizedContent(part.FunctionCall); err != nil {
+								break loopCandidates
 							}
+							buffer.WriteString(content)
 						} else {
 							// FIXME: sometimes there is no function call but text in returned part
 							if len(part.Text) > 0 {
@@ -327,37 +302,8 @@ func (c *Client) translateAndSummarizeYouTube(
 				if content := candidate.Content; content != nil {
 					for _, part := range content.Parts {
 						if part.FunctionCall != nil {
-							fn := part.FunctionCall
-
-							if fn.Name != fnNameTranslateTitleAndSummarizeContent {
-								err = fmt.Errorf("not an expected function name: '%s'", fn.Name)
+							if translatedTitle, summarizedContent, err = extractTranslatedTitleAndSummarizedContent(part.FunctionCall); err != nil {
 								break
-							} else {
-								// get trasnlated title
-								if arg, e := gt.FuncArg[string](fn.Args, fnParamNameTranslatedTitle); e == nil {
-									if arg != nil {
-										translatedTitle = *arg
-									} else {
-										err = fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
-										break
-									}
-								} else {
-									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
-									break
-								}
-
-								// get summarized content
-								if arg, e := gt.FuncArg[string](fn.Args, fnParamNameSummarizedContent); e == nil {
-									if arg != nil {
-										summarizedContent = *arg
-									} else {
-										err = fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
-										break
-									}
-								} else {
-									err = fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
-									break
-								}
 							}
 						}
 					}
@@ -375,6 +321,37 @@ func (c *Client) translateAndSummarizeYouTube(
 	}
 
 	return usedModel, translatedTitle, summarizedContent, err
+}
+
+// extractTranslatedTitleAndSummarizedContent extracts translated title and summarized content from a function call
+func extractTranslatedTitleAndSummarizedContent(fn *genai.FunctionCall) (translatedTitle, summarizedContent string, err error) {
+	if fn.Name != fnNameTranslateTitleAndSummarizeContent {
+		return "", "", fmt.Errorf("not an expected function name: '%s'", fn.Name)
+	}
+
+	// get translated title
+	if arg, e := gt.FuncArg[string](fn.Args, fnParamNameTranslatedTitle); e == nil {
+		if arg != nil {
+			translatedTitle = *arg
+		} else {
+			return "", "", fmt.Errorf("could not find function argument '%s'", fnParamNameTranslatedTitle)
+		}
+	} else {
+		return "", "", fmt.Errorf("could not get function argument '%s': %w", fnParamNameTranslatedTitle, e)
+	}
+
+	// get summarized content
+	if arg, e := gt.FuncArg[string](fn.Args, fnParamNameSummarizedContent); e == nil {
+		if arg != nil {
+			summarizedContent = *arg
+		} else {
+			return "", "", fmt.Errorf("could not find function argument '%s'", fnParamNameSummarizedContent)
+		}
+	} else {
+		return "", "", fmt.Errorf("could not get function argument '%s': %w", fnParamNameSummarizedContent, e)
+	}
+
+	return translatedTitle, summarizedContent, nil
 }
 
 const (

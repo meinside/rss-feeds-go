@@ -1,6 +1,7 @@
 package rf
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -42,32 +43,7 @@ func (c *dbCache) Exists(guid string) (exists bool) {
 func (c *dbCache) Save(item gofeed.Item, title, summary string) {
 	v(c.verbose, "dbCache - saving item to cache: %s (%s)", item.Title, title)
 
-	cached := CachedItem{
-		Title: title,
-
-		GUID:        item.GUID,
-		Description: item.Description,
-
-		Summary: summary,
-
-		MarkedAsRead: false,
-	}
-	if len(item.Links) > 0 {
-		cached.Link = item.Links[0]
-		if len(item.Links) > 1 {
-			cached.Comments = item.Links[1]
-		}
-	}
-	if item.Author != nil {
-		if len(item.Author.Name) > 0 {
-			cached.Author = item.Author.Name
-		} else if len(item.Author.Email) > 0 {
-			cached.Author = item.Author.Email
-		}
-	}
-	if item.PublishedParsed != nil {
-		cached.PublishDate = item.PublishedParsed.Format(time.RFC3339)
-	}
+	cached := newCachedItem(item, title, summary)
 
 	err := c.db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "guid"}},
@@ -86,7 +62,7 @@ func (c *dbCache) Fetch(guid string) *CachedItem {
 	v(c.verbose, "dbCache - fetching cached item with guid: %s", guid)
 
 	var cached CachedItem
-	err := c.db.Limit(1).Model(&CachedItem{}).Find(&cached).Where("guid = ?", guid).Error
+	err := c.db.Where("guid = ?", guid).First(&cached).Error
 	if err != nil {
 		log.Printf("failed to fetch cached item with guid '%s': %s", guid, err)
 		return nil
@@ -162,7 +138,7 @@ func newDBCache(filepath string) (cache *dbCache, err error) {
 	}); err == nil {
 		// migrate the schema
 		if err := db.AutoMigrate(&CachedItem{}); err != nil {
-			log.Printf("failed to migrate db: %s", err)
+			return nil, fmt.Errorf("failed to migrate db: %w", err)
 		}
 
 		return &dbCache{
