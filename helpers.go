@@ -27,6 +27,11 @@ const (
 	redacted = "|REDACTED|"
 )
 
+var (
+	reConsecutiveEmptyLines = regexp.MustCompile(`\n{2,}`)
+	reBoldMarkdown          = regexp.MustCompile(`\*\*(.*?)\*\*`)
+)
+
 // StandardizeJSON standardizes given JSON (JWCC) bytes.
 func StandardizeJSON(b []byte) ([]byte, error) {
 	ast, err := hujson.Parse(b)
@@ -165,37 +170,27 @@ func removeConsecutiveEmptyLines(input string) string {
 	input = strings.Join(trimmed, "\n")
 
 	// remove redundant empty lines
-	regex := regexp.MustCompile("\n{2,}")
-	return regex.ReplaceAllString(input, "\n")
+	return reConsecutiveEmptyLines.ReplaceAllString(input, "\n")
 }
 
 // check if given HTTP content type is formattable as text for `fetchURL`
 func isTextFormattableContent(contentType string) bool {
-	return func(contentType string) bool {
-		switch {
-		case strings.HasPrefix(contentType, "text/"):
-			return true
-		case strings.HasPrefix(contentType, "application/xhtml") ||
-			strings.HasPrefix(contentType, "application/xml"):
-			return true
-		case strings.HasPrefix(contentType, "application/json"):
-			return true
-		default:
-			return false
-		}
-	}(contentType)
+	switch {
+	case strings.HasPrefix(contentType, "text/"):
+		return true
+	case strings.HasPrefix(contentType, "application/xhtml") ||
+		strings.HasPrefix(contentType, "application/xml"):
+		return true
+	case strings.HasPrefix(contentType, "application/json"):
+		return true
+	default:
+		return false
+	}
 }
 
 // check if given HTTP content type is used as file for `fetchURL`
 func isFileContent(contentType string) bool {
-	return func(contentType string) bool {
-		switch {
-		case strings.HasPrefix(contentType, "application/pdf"):
-			return true
-		default:
-			return false
-		}
-	}(contentType)
+	return strings.HasPrefix(contentType, "application/pdf")
 }
 
 // redact given string not to expose api keys or etc.
@@ -211,11 +206,9 @@ func redactText(text string, baddies []string) string {
 func redactItems(items []CachedItem, baddies []string) []CachedItem {
 	redacted := []CachedItem{}
 
-	var summary string
 	for _, item := range items {
 		if len(item.Summary) > 0 {
-			summary = redactText(item.Summary, baddies)
-			item.Summary = summary
+			item.Summary = redactText(item.Summary, baddies)
 		}
 
 		redacted = append(redacted, item)
@@ -245,8 +238,7 @@ func decorateHTML(body string) string {
 	}
 
 	// convert "**something**" to "<b>something</b>"
-	re := regexp.MustCompile(`\*\*(.*?)\*\*`)
-	body = re.ReplaceAllString(body, `<b>$1</b>`)
+	body = reBoldMarkdown.ReplaceAllString(body, `<b>$1</b>`)
 
 	// TODO: add some more decorations
 
