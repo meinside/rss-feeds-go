@@ -6,10 +6,12 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/feeds"
@@ -46,7 +48,7 @@ type Client struct {
 	summarizeIntervalSeconds int
 	verbose                  bool
 
-	_numRequests int
+	_numRequests atomic.Int64
 }
 
 // NewClient returns a new client with memory cache.
@@ -118,7 +120,9 @@ func (c *Client) FetchFeeds(
 	feeds = []gofeed.Feed{}
 	errs := []error{}
 
-	client := http.DefaultClient
+	client := &http.Client{
+		Timeout: time.Duration(fetchURLTimeoutSeconds) * time.Second,
+	}
 
 	for _, url := range c.feedsURLs {
 		v(c.verbose, "fetching feeds from url: %s", url)
@@ -130,54 +134,57 @@ func (c *Client) FetchFeeds(
 		req.Header.Set("User-Agent", fakeUserAgent)
 		req.Header.Set("Content-Type", "text/xml;charset=UTF-8")
 
-		if resp, err := client.Do(req); err == nil {
-			defer func() {
-				_ = resp.Body.Close()
-			}()
+		resp, err := client.Do(req)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to fetch feeds from url: %w", err))
+			continue
+		}
 
-			if resp.StatusCode == 200 {
-				contentType := resp.Header.Get("Content-Type")
+		if resp.StatusCode == 200 {
+			contentType := resp.Header.Get("Content-Type")
 
-				if bytes, err := io.ReadAll(resp.Body); err == nil {
-					fp := gofeed.NewParser()
-					if fetched, err := fp.ParseString(string(bytes)); err == nil {
-						v(c.verbose, "fetched %d item(s)", len(fetched.Items))
+			if bytes, err := io.ReadAll(resp.Body); err == nil {
+				fp := gofeed.NewParser()
+				if fetched, err := fp.ParseString(string(bytes)); err == nil {
+					v(c.verbose, "fetched %d item(s)", len(fetched.Items))
 
-						if ignoreAlreadyCached {
-							// delete if it already exists in the cache
-							fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
-								exists := c.cache.Exists(item.GUID)
-								if exists {
-									v(c.verbose, "ignoring already cached item: '%s' (%s)", item.Title, item.GUID)
-								}
-								return exists
-							})
-						}
-
-						// delete if it was published too long ago
+					if ignoreAlreadyCached {
+						// delete if it already exists in the cache
 						fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
-							before := item.PublishedParsed.Before(time.Now().Add(time.Duration(-ignoreItemsPublishedBeforeDays) * 24 * time.Hour))
-							if before {
-								v(c.verbose, "ignoring item older than %d days: '%s' (%s)", ignoreItemsPublishedBeforeDays, item.Title, item.GUID)
+							exists := c.cache.Exists(item.GUID)
+							if exists {
+								v(c.verbose, "ignoring already cached item: '%s' (%s)", item.Title, item.GUID)
 							}
-							return before
+							return exists
 						})
-
-						v(c.verbose, "returning %d item(s)", len(fetched.Items))
-
-						feeds = append(feeds, *fetched)
-					} else {
-						errs = append(errs, fmt.Errorf("failed to parse feeds from '%s': %w", url, err))
 					}
+
+					// delete if it was published too long ago
+					fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
+						if item.PublishedParsed == nil {
+							return false
+						}
+						before := item.PublishedParsed.Before(time.Now().Add(time.Duration(-ignoreItemsPublishedBeforeDays) * 24 * time.Hour))
+						if before {
+							v(c.verbose, "ignoring item older than %d days: '%s' (%s)", ignoreItemsPublishedBeforeDays, item.Title, item.GUID)
+						}
+						return before
+					})
+
+					v(c.verbose, "returning %d item(s)", len(fetched.Items))
+
+					feeds = append(feeds, *fetched)
 				} else {
-					errs = append(errs, fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err))
+					errs = append(errs, fmt.Errorf("failed to parse feeds from '%s': %w", url, err))
 				}
 			} else {
-				errs = append(errs, fmt.Errorf("http error %d from url: '%s'", resp.StatusCode, url))
+				errs = append(errs, fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err))
 			}
 		} else {
-			errs = append(errs, fmt.Errorf("failed to fetch feeds from url: %w", err))
+			errs = append(errs, fmt.Errorf("http error %d from url: '%s'", resp.StatusCode, url))
 		}
+
+		_ = resp.Body.Close()
 	}
 
 	if len(errs) > 0 {
@@ -209,7 +216,6 @@ outer:
 				context.TODO(),
 				summarizeTimeoutSeconds*time.Second,
 			)
-			defer cancel()
 
 			// summarize,
 			usedModel, translatedTitle, summarizedContent, err := c.summarize(
@@ -218,6 +224,8 @@ outer:
 				item.Link,
 				urlScrapper...,
 			)
+			cancel()
+
 			if err != nil {
 				// NOTE: skip remaining feed items if err is:
 				//   - http 503 ('The model is overloaded. Please try again later.')
@@ -274,7 +282,7 @@ func (c *Client) summarize(
 		v(c.verbose, "summarizing youtube url: %s", url)
 
 		// context with timeout
-		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
+		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSecondsForYoutube*time.Second)
 		defer cancelGenerate()
 
 		// summarize & translate given title and youtube url
@@ -287,7 +295,7 @@ func (c *Client) summarize(
 		v(c.verbose, "summarizing content of url: %s", url)
 
 		// context with timeout
-		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSecondsForYoutube*time.Second)
+		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
 		defer cancelGenerate()
 
 		// fetch the content of given url and summarize & translate it
@@ -389,10 +397,10 @@ func (c *Client) fetch(
 
 // get rotated api key and model
 func (c *Client) rotatedAPIKeyAndModel() (rotatedAPIKey, rotatedModel string) {
-	defer func() { c._numRequests++ }()
+	n := int(c._numRequests.Add(1) - 1)
 
-	rotatedAPIKey = c.googleAIAPIKeys[c._numRequests%len(c.googleAIAPIKeys)]
-	rotatedModel = c.googleAIModels[c._numRequests%len(c.googleAIModels)]
+	rotatedAPIKey = c.googleAIAPIKeys[n%len(c.googleAIAPIKeys)]
+	rotatedModel = c.googleAIModels[n%len(c.googleAIModels)]
 
 	return rotatedAPIKey, rotatedModel
 }
@@ -440,9 +448,11 @@ func (c *Client) PublishXML(
 		if !isError(item.Summary) {
 			// if it was a successful summary, append comments or GUID of the original content
 			if len(item.Comments) > 0 {
-				content += `<br><br>` + fmt.Sprintf(`Comments: <a href="%[1]s">%[1]s</a>`, item.Comments)
+				escaped := html.EscapeString(item.Comments)
+				content += `<br><br>` + fmt.Sprintf(`Comments: <a href="%[1]s">%[1]s</a>`, escaped)
 			} else {
-				content += `<br><br>` + fmt.Sprintf(`GUID: <a href="%[1]s">%[1]s</a>`, item.GUID)
+				escaped := html.EscapeString(item.GUID)
+				content += `<br><br>` + fmt.Sprintf(`GUID: <a href="%[1]s">%[1]s</a>`, escaped)
 			}
 		}
 

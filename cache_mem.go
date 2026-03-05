@@ -3,6 +3,7 @@ package rf
 import (
 	"maps"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/mmcdole/gofeed"
@@ -15,6 +16,7 @@ import (
 
 // memory cache
 type memCache struct {
+	mu    sync.RWMutex
 	items map[string]CachedItem
 
 	verbose bool
@@ -23,6 +25,9 @@ type memCache struct {
 // Exists checks for the existence of `id` in the cache.
 func (c *memCache) Exists(guid string) bool {
 	v(c.verbose, "memCache - checking existence of cached item with guid: %s", guid)
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	_, exists := c.items[guid]
 
@@ -33,37 +38,19 @@ func (c *memCache) Exists(guid string) bool {
 func (c *memCache) Save(item gofeed.Item, title, summary string) {
 	v(c.verbose, "memCache - saving item to cache: %s (%s)", item.Title, title)
 
-	cached := CachedItem{
-		Title: title,
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
-		GUID:        item.GUID,
-		Description: item.Description,
-
-		Summary: summary,
-	}
-	if len(item.Links) > 0 {
-		cached.Link = item.Links[0]
-		if len(item.Links) > 1 {
-			cached.Comments = item.Links[1]
-		}
-	}
-	if item.Author != nil {
-		if len(item.Author.Name) > 0 {
-			cached.Author = item.Author.Name
-		} else if len(item.Author.Email) > 0 {
-			cached.Author = item.Author.Email
-		}
-	}
-	if item.PublishedParsed != nil {
-		cached.PublishDate = item.PublishedParsed.Format(time.RFC3339)
-	}
-
+	cached := newCachedItem(item, title, summary)
 	c.items[item.GUID] = cached
 }
 
 // Fetch fetches the cached item with given `guid`.
 func (c *memCache) Fetch(guid string) *CachedItem {
 	v(c.verbose, "memCache - fetching cached item with guid: %s", guid)
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	if v, exists := c.items[guid]; exists {
 		return &v
@@ -75,19 +62,12 @@ func (c *memCache) Fetch(guid string) *CachedItem {
 func (c *memCache) MarkAsRead(guid string) {
 	v(c.verbose, "memCache - marking cached item with guid: %s as read", guid)
 
-	if v, exists := c.items[guid]; exists {
-		// overwrite it
-		c.items[guid] = CachedItem{
-			Title:        v.Title,
-			Link:         v.Link,
-			Comments:     v.Comments,
-			GUID:         guid,
-			Author:       v.Author,
-			PublishDate:  v.PublishDate,
-			Description:  v.Description,
-			Summary:      v.Summary,
-			MarkedAsRead: true,
-		}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if item, exists := c.items[guid]; exists {
+		item.MarkedAsRead = true
+		c.items[guid] = item
 	}
 }
 
@@ -95,10 +75,12 @@ func (c *memCache) MarkAsRead(guid string) {
 func (c *memCache) List(includeItemsMarkedAsRead bool) []CachedItem {
 	v(c.verbose, "memCache - listing cached items with includeItemsMarkedAsRead = %v", includeItemsMarkedAsRead)
 
+	c.mu.RLock()
 	all := []CachedItem{}
 	for _, v := range c.items {
 		all = append(all, v)
 	}
+	c.mu.RUnlock()
 
 	return slices.DeleteFunc(all, func(v CachedItem) bool {
 		if includeItemsMarkedAsRead {
@@ -111,6 +93,9 @@ func (c *memCache) List(includeItemsMarkedAsRead bool) []CachedItem {
 // DeleteOlderThan1Month deletes cached items which are older than 1 month.
 func (c *memCache) DeleteOlderThan1Month() {
 	v(c.verbose, "memCache - deleting cached items older than 1 month")
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	maps.DeleteFunc(c.items, func(_ string, v CachedItem) bool {
 		return v.CreatedAt.Before(time.Now().Add(-30 * 24 * time.Hour))
