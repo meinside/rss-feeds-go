@@ -136,7 +136,9 @@ func TestMemCache(t *testing.T) {
 
 	t.Run("Save and Exists", func(t *testing.T) {
 		item := testFeedItem("guid-1", "Title 1")
-		cache.Save(item, "Translated 1", "Summary 1")
+		if err := cache.Save(item, "Translated 1", "Summary 1"); err != nil {
+			t.Fatalf("Save failed: %s", err)
+		}
 
 		if !cache.Exists("guid-1") {
 			t.Error("expected item to exist after Save")
@@ -164,7 +166,9 @@ func TestMemCache(t *testing.T) {
 
 	t.Run("Save updates existing item", func(t *testing.T) {
 		item := testFeedItem("guid-1", "Title 1 Updated")
-		cache.Save(item, "Updated Title", "Updated Summary")
+		if err := cache.Save(item, "Updated Title", "Updated Summary"); err != nil {
+			t.Fatalf("Save failed: %s", err)
+		}
 
 		cached := cache.Fetch("guid-1")
 		if cached == nil {
@@ -176,7 +180,9 @@ func TestMemCache(t *testing.T) {
 	})
 
 	t.Run("MarkAsRead", func(t *testing.T) {
-		cache.MarkAsRead("guid-1")
+		if err := cache.MarkAsRead("guid-1"); err != nil {
+			t.Fatalf("MarkAsRead failed: %s", err)
+		}
 
 		cached := cache.Fetch("guid-1")
 		if cached == nil {
@@ -188,12 +194,16 @@ func TestMemCache(t *testing.T) {
 	})
 
 	t.Run("MarkAsRead on nonexistent item", func(t *testing.T) {
-		cache.MarkAsRead("nonexistent") // should not panic
+		if err := cache.MarkAsRead("nonexistent"); err != nil {
+			t.Errorf("unexpected error: %s", err)
+		}
 	})
 
 	t.Run("List without read items", func(t *testing.T) {
 		item2 := testFeedItem("guid-2", "Title 2")
-		cache.Save(item2, "Translated 2", "Summary 2")
+		if err := cache.Save(item2, "Translated 2", "Summary 2"); err != nil {
+			t.Fatalf("Save failed: %s", err)
+		}
 
 		items := cache.List(false)
 		for _, item := range items {
@@ -226,7 +236,9 @@ func TestMemCache(t *testing.T) {
 
 	t.Run("DeleteOlderThan1Month", func(t *testing.T) {
 		// all items have zero CreatedAt (from gorm.Model), which is before 1 month ago
-		cache.DeleteOlderThan1Month()
+		if err := cache.DeleteOlderThan1Month(); err != nil {
+			t.Fatalf("DeleteOlderThan1Month failed: %s", err)
+		}
 
 		items := cache.List(true)
 		if len(items) != 0 {
@@ -251,7 +263,9 @@ func TestDBCache(t *testing.T) {
 
 	t.Run("Save and Exists", func(t *testing.T) {
 		item := testFeedItem("db-guid-1", "DB Title 1")
-		cache.Save(item, "DB Translated 1", "DB Summary 1")
+		if err := cache.Save(item, "DB Translated 1", "DB Summary 1"); err != nil {
+			t.Fatalf("Save failed: %s", err)
+		}
 
 		if !cache.Exists("db-guid-1") {
 			t.Error("expected item to exist after Save")
@@ -279,7 +293,9 @@ func TestDBCache(t *testing.T) {
 
 	t.Run("Save upserts existing item", func(t *testing.T) {
 		item := testFeedItem("db-guid-1", "DB Title 1")
-		cache.Save(item, "DB Updated Title", "DB Updated Summary")
+		if err := cache.Save(item, "DB Updated Title", "DB Updated Summary"); err != nil {
+			t.Fatalf("Save failed: %s", err)
+		}
 
 		cached := cache.Fetch("db-guid-1")
 		if cached == nil {
@@ -294,7 +310,9 @@ func TestDBCache(t *testing.T) {
 	})
 
 	t.Run("MarkAsRead", func(t *testing.T) {
-		cache.MarkAsRead("db-guid-1")
+		if err := cache.MarkAsRead("db-guid-1"); err != nil {
+			t.Fatalf("MarkAsRead failed: %s", err)
+		}
 
 		cached := cache.Fetch("db-guid-1")
 		if cached == nil {
@@ -307,7 +325,9 @@ func TestDBCache(t *testing.T) {
 
 	t.Run("List without read items", func(t *testing.T) {
 		item2 := testFeedItem("db-guid-2", "DB Title 2")
-		cache.Save(item2, "DB Translated 2", "DB Summary 2")
+		if err := cache.Save(item2, "DB Translated 2", "DB Summary 2"); err != nil {
+			t.Fatalf("Save failed: %s", err)
+		}
 
 		items := cache.List(false)
 		for _, item := range items {
@@ -340,7 +360,9 @@ func TestDBCache(t *testing.T) {
 
 	t.Run("DeleteOlderThan1Month", func(t *testing.T) {
 		// recently created items should NOT be deleted
-		cache.DeleteOlderThan1Month()
+		if err := cache.DeleteOlderThan1Month(); err != nil {
+			t.Fatalf("DeleteOlderThan1Month failed: %s", err)
+		}
 
 		items := cache.List(true)
 		if len(items) < 2 {
@@ -348,4 +370,3 @@ func TestDBCache(t *testing.T) {
 		}
 	})
 }
-

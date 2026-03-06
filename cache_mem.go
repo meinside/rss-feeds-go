@@ -2,7 +2,6 @@ package rf
 
 import (
 	"maps"
-	"slices"
 	"sync"
 	"time"
 
@@ -35,7 +34,7 @@ func (c *memCache) Exists(guid string) bool {
 }
 
 // Save saves given item to the cache.
-func (c *memCache) Save(item gofeed.Item, title, summary string) {
+func (c *memCache) Save(item gofeed.Item, title, summary string) error {
 	v(c.verbose, "memCache - saving item to cache: %s (%s)", item.Title, title)
 
 	c.mu.Lock()
@@ -43,6 +42,8 @@ func (c *memCache) Save(item gofeed.Item, title, summary string) {
 
 	cached := newCachedItem(item, title, summary)
 	c.items[item.GUID] = cached
+
+	return nil
 }
 
 // Fetch fetches the cached item with given `guid`.
@@ -59,7 +60,7 @@ func (c *memCache) Fetch(guid string) *CachedItem {
 }
 
 // MarkAsRead marks a cached item as read.
-func (c *memCache) MarkAsRead(guid string) {
+func (c *memCache) MarkAsRead(guid string) error {
 	v(c.verbose, "memCache - marking cached item with guid: %s as read", guid)
 
 	c.mu.Lock()
@@ -69,6 +70,8 @@ func (c *memCache) MarkAsRead(guid string) {
 		item.MarkedAsRead = true
 		c.items[guid] = item
 	}
+
+	return nil
 }
 
 // List lists all cached items.
@@ -76,22 +79,20 @@ func (c *memCache) List(includeItemsMarkedAsRead bool) []CachedItem {
 	v(c.verbose, "memCache - listing cached items with includeItemsMarkedAsRead = %v", includeItemsMarkedAsRead)
 
 	c.mu.RLock()
-	all := []CachedItem{}
-	for _, v := range c.items {
-		all = append(all, v)
-	}
-	c.mu.RUnlock()
+	defer c.mu.RUnlock()
 
-	return slices.DeleteFunc(all, func(v CachedItem) bool {
-		if includeItemsMarkedAsRead {
-			return false
+	var all []CachedItem
+	for _, item := range c.items {
+		if includeItemsMarkedAsRead || !item.MarkedAsRead {
+			all = append(all, item)
 		}
-		return v.MarkedAsRead
-	})
+	}
+
+	return all
 }
 
 // DeleteOlderThan1Month deletes cached items which are older than 1 month.
-func (c *memCache) DeleteOlderThan1Month() {
+func (c *memCache) DeleteOlderThan1Month() error {
 	v(c.verbose, "memCache - deleting cached items older than 1 month")
 
 	c.mu.Lock()
@@ -100,6 +101,8 @@ func (c *memCache) DeleteOlderThan1Month() {
 	maps.DeleteFunc(c.items, func(_ string, v CachedItem) bool {
 		return v.CreatedAt.Before(time.Now().Add(-30 * 24 * time.Hour))
 	})
+
+	return nil
 }
 
 // SetVerbose sets the verbosity of cache.

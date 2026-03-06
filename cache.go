@@ -17,11 +17,11 @@ const (
 // FeedsItemsCache is an interface of feeds items' cache
 type FeedsItemsCache interface {
 	Exists(guid string) bool
-	Save(item gofeed.Item, title, summary string)
+	Save(item gofeed.Item, title, summary string) error
 	Fetch(guid string) *CachedItem
-	MarkAsRead(guid string)
+	MarkAsRead(guid string) error
 	List(includeItemsMarkedAsRead bool) []CachedItem
-	DeleteOlderThan1Month()
+	DeleteOlderThan1Month() error
 
 	SetVerbose(v bool)
 }

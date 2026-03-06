@@ -40,7 +40,7 @@ func (c *dbCache) Exists(guid string) (exists bool) {
 }
 
 // Save saves given item to the cache.
-func (c *dbCache) Save(item gofeed.Item, title, summary string) {
+func (c *dbCache) Save(item gofeed.Item, title, summary string) error {
 	v(c.verbose, "dbCache - saving item to cache: %s (%s)", item.Title, title)
 
 	cached := newCachedItem(item, title, summary)
@@ -53,8 +53,10 @@ func (c *dbCache) Save(item gofeed.Item, title, summary string) {
 		}),
 	}).Create(&cached).Error
 	if err != nil {
-		log.Printf("failed to upsert cached item: %s", err)
+		return fmt.Errorf("failed to upsert cached item '%s': %w", item.GUID, err)
 	}
+
+	return nil
 }
 
 // Fetch fetches the cached item with given `guid`.
@@ -71,16 +73,18 @@ func (c *dbCache) Fetch(guid string) *CachedItem {
 }
 
 // MarkAsRead marks a cached item as read.
-func (c *dbCache) MarkAsRead(guid string) {
+func (c *dbCache) MarkAsRead(guid string) error {
 	v(c.verbose, "dbCache - marking cached item with guid: %s as read", guid)
 
 	result := c.db.Model(&CachedItem{}).Where("guid = ?", guid).Update("marked_as_read", true)
-	if result.RowsAffected != 1 {
-		log.Printf("failed to update cached item with guid '%s' (number of updated: %d)", guid, result.RowsAffected)
-	}
 	if result.Error != nil {
-		log.Printf("failed to update cached item with guid '%s': %s", guid, result.Error)
+		return fmt.Errorf("failed to mark cached item '%s' as read: %w", guid, result.Error)
 	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("unexpected rows affected when marking '%s' as read: %d", guid, result.RowsAffected)
+	}
+
+	return nil
 }
 
 // List lists cached items.
@@ -106,15 +110,19 @@ func (c *dbCache) List(includeItemsMarkedAsRead bool) (items []CachedItem) {
 }
 
 // DeleteOlderThan1Month deletes cached items which are older than 1 month.
-func (c *dbCache) DeleteOlderThan1Month() {
+func (c *dbCache) DeleteOlderThan1Month() error {
 	v(c.verbose, "dbCache - deleting cached items older than 1 month")
 
 	result := c.db.Where("created_at < ?", time.Now().Add(-30*24*time.Hour)).Delete(&CachedItem{})
 	if result.Error != nil {
-		log.Printf("failed to delete cached items older than 1 month: %s", result.Error)
-	} else if result.RowsAffected > 0 {
+		return fmt.Errorf("failed to delete cached items older than 1 month: %w", result.Error)
+	}
+
+	if result.RowsAffected > 0 {
 		v(c.verbose, "dbCache - deleted %d cached items", result.RowsAffected)
 	}
+
+	return nil
 }
 
 // SetVerbose sets the verbosity of cache.

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"strings"
 	"time"
@@ -58,42 +57,49 @@ referring to the summarized content:
 	generationTimeoutSecondsForYoutube = 5 * 60 // timeout seconds for summary of youtube video
 )
 
+// newGeminiClient creates a new gemini-things client with rotated API key and model,
+// and sets up the system instruction. Caller must close the returned client.
+func (c *Client) newGeminiClient() (gtc *gt.Client, usedModel string, err error) {
+	var usedAPIKey string
+	usedAPIKey, usedModel = c.rotatedAPIKeyAndModel()
+
+	gtc, err = gt.NewClient(
+		usedAPIKey,
+		gt.WithModel(usedModel),
+	)
+	if err != nil {
+		return nil, usedModel, fmt.Errorf("error initializing gemini-things client: %w", err)
+	}
+
+	gtc.SetSystemInstructionFunc(systemInstructionForTranslationAndSummary)
+
+	return gtc, usedModel, nil
+}
+
+// closeGeminiClient closes the gemini-things client, logging any errors.
+func closeGeminiClient(gtc *gt.Client) {
+	if err := gtc.Close(); err != nil {
+		log.Printf("failed to close gemini-things client: %s", err)
+	}
+}
+
 // translate and summarize given things
 func (c *Client) translateAndSummarize(
 	ctx context.Context,
 	prompt string,
 	files ...[]byte,
 ) (usedModel, translatedTitle, summarizedContent string, err error) {
-	var usedAPIKey string
-	usedAPIKey, usedModel = c.rotatedAPIKeyAndModel()
-
-	gtc, err := gt.NewClient(
-		usedAPIKey,
-		gt.WithModel(usedModel),
-	)
+	gtc, usedModel, err := c.newGeminiClient()
 	if err != nil {
-		return usedModel, "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
+		return usedModel, "", "", err
 	}
 	setCustomFileConverters(gtc)
-
-	defer func() {
-		if err := gtc.Close(); err != nil {
-			log.Printf("failed to close gemini-things client: %s", err)
-		}
-	}()
-
-	// system instruction
-	gtc.SetSystemInstructionFunc(systemInstructionForTranslationAndSummary)
+	defer closeGeminiClient(gtc)
 
 	// prompt & files
-	promptFiles := map[string]io.Reader{}
-	for i, file := range files {
-		promptFiles[fmt.Sprintf("file %d", i+1)] = bytes.NewReader(file)
-	}
-
 	prompts := []gt.Prompt{gt.PromptFromText(prompt)}
-	for filename, file := range promptFiles {
-		prompts = append(prompts, gt.PromptFromFile(filename, file))
+	for i, file := range files {
+		prompts = append(prompts, gt.PromptFromFile(fmt.Sprintf("file %d", i+1), bytes.NewReader(file)))
 	}
 
 	// context with timeout (prompts => contents)
@@ -167,25 +173,11 @@ func (c *Client) summarizeURL(
 	url string,
 	desiredLanguage string,
 ) (usedModel, untouchedTitle string, summarizedContent string, err error) {
-	var usedAPIKey string
-	usedAPIKey, usedModel = c.rotatedAPIKeyAndModel()
-
-	gtc, err := gt.NewClient(
-		usedAPIKey,
-		gt.WithModel(usedModel),
-	)
+	gtc, usedModel, err := c.newGeminiClient()
 	if err != nil {
-		return usedModel, "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
+		return usedModel, "", "", err
 	}
-
-	defer func() {
-		if err := gtc.Close(); err != nil {
-			log.Printf("failed to close gemini-things client: %s", err)
-		}
-	}()
-
-	// system instruction
-	gtc.SetSystemInstructionFunc(systemInstructionForTranslationAndSummary)
+	defer closeGeminiClient(gtc)
 
 	// prompts
 	prompts := []gt.Prompt{
@@ -257,26 +249,12 @@ func (c *Client) translateAndSummarizeYouTube(
 	title string,
 	url string,
 ) (usedModel, translatedTitle, summarizedContent string, err error) {
-	var usedAPIKey string
-	usedAPIKey, usedModel = c.rotatedAPIKeyAndModel()
-
-	gtc, err := gt.NewClient(
-		usedAPIKey,
-		gt.WithModel(usedModel),
-	)
+	gtc, usedModel, err := c.newGeminiClient()
 	if err != nil {
-		return usedModel, "", "", fmt.Errorf("error initializing gemini-things client: %w", err)
+		return usedModel, "", "", err
 	}
 	setCustomFileConverters(gtc)
-
-	defer func() {
-		if err := gtc.Close(); err != nil {
-			log.Printf("failed to close gemini-things client: %s", err)
-		}
-	}()
-
-	// system instruction
-	gtc.SetSystemInstructionFunc(systemInstructionForTranslationAndSummary)
+	defer closeGeminiClient(gtc)
 
 	// prompts
 	prompts := []gt.Prompt{
