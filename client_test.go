@@ -226,8 +226,8 @@ func TestListAndMarkCachedItems(t *testing.T) {
 	// save items directly to cache
 	item1 := testFeedItem("guid-list-1", "Title 1")
 	item2 := testFeedItem("guid-list-2", "Title 2")
-	client.cache.Save(item1, "Title 1", "Summary with secret-key inside")
-	client.cache.Save(item2, "Title 2", "Clean summary")
+	_ = client.cache.Save(item1, "Title 1", "Summary with secret-key inside")
+	_ = client.cache.Save(item2, "Title 2", "Clean summary")
 
 	// list should redact API keys
 	items := client.ListCachedItems(false)
@@ -241,7 +241,9 @@ func TestListAndMarkCachedItems(t *testing.T) {
 	}
 
 	// mark as read
-	client.MarkCachedItemsAsRead(items)
+	if err := client.MarkCachedItemsAsRead(items); err != nil {
+		t.Fatalf("MarkCachedItemsAsRead failed: %s", err)
+	}
 
 	// list without read items should be empty
 	items = client.ListCachedItems(false)
@@ -261,10 +263,12 @@ func TestDeleteOldCachedItems(t *testing.T) {
 	client := NewClient([]string{"key"}, nil)
 
 	item := testFeedItem("guid-old", "Old Title")
-	client.cache.Save(item, "Old Title", "Old Summary")
+	_ = client.cache.Save(item, "Old Title", "Old Summary")
 
 	// memCache items have zero CreatedAt, so they are "old"
-	client.DeleteOldCachedItems()
+	if err := client.DeleteOldCachedItems(); err != nil {
+		t.Fatalf("DeleteOldCachedItems failed: %s", err)
+	}
 
 	items := client.ListCachedItems(true)
 	if len(items) != 0 {
@@ -431,7 +435,7 @@ func TestFetchFeedsIgnoreCached(t *testing.T) {
 	client := NewClient([]string{"key"}, []string{server.URL})
 
 	// pre-cache one item
-	client.cache.Save(testFeedItem("guid-cached", "Cached Article"), "Cached", "Summary")
+	_ = client.cache.Save(testFeedItem("guid-cached", "Cached Article"), "Cached", "Summary")
 
 	ctx := context.Background()
 	feeds, err := client.FetchFeeds(ctx, true, 7)

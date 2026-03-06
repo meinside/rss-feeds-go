@@ -1,17 +1,20 @@
 package rf
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
 
 // test `getContentType`
 func TestGetContentType(t *testing.T) {
+	ctx := context.Background()
+
 	for url, contentType := range map[string]string{
 		"https://github.com/meinside": "text/html",
 		"https://raw.githubusercontent.com/meinside/meinside/main/res/profile/sloth.jpg": "image/jpeg",
 	} {
-		typ, err := getContentType(url, false)
+		typ, err := getContentType(ctx, url, false)
 		if err != nil {
 			t.Errorf("failed to get content type of '%s': %s", url, err)
 		}
@@ -34,6 +37,46 @@ lines**`: `<b>bold text<br>over multiple<br>lines</b>`,
 	} {
 		if decorated := decorateHTML(original); decorated != expected {
 			t.Errorf("expected decorated html: '%s' vs actual: '%s'", expected, decorated)
+		}
+	}
+}
+
+// test `decorateHTML` with extended markdown patterns
+func TestDecorateHTMLExtended(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		// italic
+		{
+			"this is *italic* text",
+			"this is <i>italic</i> text",
+		},
+		// inline code
+		{
+			"use `fmt.Println` here",
+			"use <code>fmt.Println</code> here",
+		},
+		// link
+		{
+			"click [here](https://example.com) now",
+			`click <a href="https://example.com">here</a> now`,
+		},
+		// bold + italic combined
+		{
+			"**bold** and *italic*",
+			"<b>bold</b> and <i>italic</i>",
+		},
+		// multiple patterns
+		{
+			"**bold** with `code` and [link](https://x.com)",
+			`<b>bold</b> with <code>code</code> and <a href="https://x.com">link</a>`,
+		},
+	}
+
+	for _, tt := range tests {
+		if got := decorateHTML(tt.input); got != tt.expected {
+			t.Errorf("decorateHTML(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
 	}
 }
