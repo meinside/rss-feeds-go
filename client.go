@@ -116,82 +116,96 @@ func (c *Client) FetchFeeds(
 	ctx context.Context,
 	ignoreAlreadyCached bool,
 	ignoreItemsPublishedBeforeDays uint,
-) (feeds []gofeed.Feed, err error) {
-	feeds = []gofeed.Feed{}
-	errs := []error{}
+) ([]gofeed.Feed, error) {
+	var feeds []gofeed.Feed
+	var errs []error
+
+	for _, url := range c.feedsURLs {
+		fetched, err := c.fetchSingleFeed(ctx, url, ignoreAlreadyCached, ignoreItemsPublishedBeforeDays)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		feeds = append(feeds, *fetched)
+	}
+
+	if len(errs) > 0 {
+		return feeds, errors.Join(errs...)
+	}
+
+	return feeds, nil
+}
+
+// fetchSingleFeed fetches a single feed from the given URL with proper defer-based cleanup.
+func (c *Client) fetchSingleFeed(
+	ctx context.Context,
+	url string,
+	ignoreAlreadyCached bool,
+	ignoreItemsPublishedBeforeDays uint,
+) (*gofeed.Feed, error) {
+	v(c.verbose, "fetching feeds from url: %s", url)
 
 	client := &http.Client{
 		Timeout: time.Duration(fetchURLTimeoutSeconds) * time.Second,
 	}
 
-	for _, url := range c.feedsURLs {
-		v(c.verbose, "fetching feeds from url: %s", url)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("User-Agent", fakeUserAgent)
+	req.Header.Set("Content-Type", "text/xml;charset=UTF-8")
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request: %w", err)
-		}
-		req.Header.Set("User-Agent", fakeUserAgent)
-		req.Header.Set("Content-Type", "text/xml;charset=UTF-8")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch feeds from url: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
 
-		resp, err := client.Do(req)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to fetch feeds from url: %w", err))
-			continue
-		}
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("http error %d from url: '%s'", resp.StatusCode, url)
+	}
 
-		if resp.StatusCode == 200 {
-			contentType := resp.Header.Get("Content-Type")
+	contentType := resp.Header.Get("Content-Type")
 
-			if bytes, err := io.ReadAll(resp.Body); err == nil {
-				fp := gofeed.NewParser()
-				if fetched, err := fp.ParseString(string(bytes)); err == nil {
-					v(c.verbose, "fetched %d item(s)", len(fetched.Items))
+	bytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err)
+	}
 
-					if ignoreAlreadyCached {
-						// delete if it already exists in the cache
-						fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
-							exists := c.cache.Exists(item.GUID)
-							if exists {
-								v(c.verbose, "ignoring already cached item: '%s' (%s)", item.Title, item.GUID)
-							}
-							return exists
-						})
-					}
+	fp := gofeed.NewParser()
+	fetched, err := fp.ParseString(string(bytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse feeds from '%s': %w", url, err)
+	}
 
-					// delete if it was published too long ago
-					fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
-						if item.PublishedParsed == nil {
-							return false
-						}
-						before := item.PublishedParsed.Before(time.Now().Add(time.Duration(-ignoreItemsPublishedBeforeDays) * 24 * time.Hour))
-						if before {
-							v(c.verbose, "ignoring item older than %d days: '%s' (%s)", ignoreItemsPublishedBeforeDays, item.Title, item.GUID)
-						}
-						return before
-					})
+	v(c.verbose, "fetched %d item(s)", len(fetched.Items))
 
-					v(c.verbose, "returning %d item(s)", len(fetched.Items))
-
-					feeds = append(feeds, *fetched)
-				} else {
-					errs = append(errs, fmt.Errorf("failed to parse feeds from '%s': %w", url, err))
-				}
-			} else {
-				errs = append(errs, fmt.Errorf("failed to read '%s' document from '%s': %w", contentType, url, err))
+	if ignoreAlreadyCached {
+		fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
+			exists := c.cache.Exists(item.GUID)
+			if exists {
+				v(c.verbose, "ignoring already cached item: '%s' (%s)", item.Title, item.GUID)
 			}
-		} else {
-			errs = append(errs, fmt.Errorf("http error %d from url: '%s'", resp.StatusCode, url))
+			return exists
+		})
+	}
+
+	// delete if it was published too long ago
+	fetched.Items = slices.DeleteFunc(fetched.Items, func(item *gofeed.Item) bool {
+		if item.PublishedParsed == nil {
+			return false
 		}
+		before := item.PublishedParsed.Before(time.Now().Add(time.Duration(-ignoreItemsPublishedBeforeDays) * 24 * time.Hour))
+		if before {
+			v(c.verbose, "ignoring item older than %d days: '%s' (%s)", ignoreItemsPublishedBeforeDays, item.Title, item.GUID)
+		}
+		return before
+	})
 
-		_ = resp.Body.Close()
-	}
+	v(c.verbose, "returning %d item(s)", len(fetched.Items))
 
-	if len(errs) > 0 {
-		err = errors.Join(errs...)
-	}
-
-	return feeds, err
+	return fetched, nil
 }
 
 // SummarizeAndCacheFeeds summarizes given feeds items and caches them.
@@ -203,23 +217,24 @@ func (c *Client) FetchFeeds(
 // If there was a retriable error(eg. model overloads), it will return immediately.
 // (remaining feed items will be retried later)
 func (c *Client) SummarizeAndCacheFeeds(
+	ctx context.Context,
 	feeds []gofeed.Feed,
 	urlScrapper ...*ssg.Scrapper,
 ) (err error) {
-	errs := []error{}
+	var errs []error
 
 outer:
 	for _, f := range feeds {
 		for i, item := range f.Items {
 			// context with timeout
-			ctx, cancel := context.WithTimeout(
-				context.TODO(),
+			itemCtx, cancel := context.WithTimeout(
+				ctx,
 				summarizeTimeoutSeconds*time.Second,
 			)
 
 			// summarize,
 			usedModel, translatedTitle, summarizedContent, err := c.summarize(
-				ctx,
+				itemCtx,
 				item.Title,
 				item.Link,
 				urlScrapper...,
@@ -239,7 +254,6 @@ outer:
 				}
 
 				// prepend error text to the original content
-				// summarizedContent = fmt.Sprintf("%s\n\n%s", summarizedContent, item.Description)
 				summarizedContent = fmt.Sprintf("<p>%s</p>\n<hr>\n%s", summarizedContent, item.Description)
 
 				errs = append(errs, fmt.Errorf("failed to summarize item '%s' (%s): %w", item.Title, item.Link, err))
@@ -254,7 +268,9 @@ outer:
 			}
 
 			// cache, (or update)
-			c.cache.Save(*item, translatedTitle, summarizedContent)
+			if cacheErr := c.cache.Save(*item, translatedTitle, summarizedContent); cacheErr != nil {
+				errs = append(errs, fmt.Errorf("failed to cache item '%s': %w", item.Title, cacheErr))
+			}
 
 			// and sleep for a while
 			if i < len(f.Items)-1 {
@@ -281,87 +297,74 @@ func (c *Client) summarize(
 
 		v(c.verbose, "summarizing youtube url: %s", url)
 
-		// context with timeout
 		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSecondsForYoutube*time.Second)
 		defer cancelGenerate()
 
-		// summarize & translate given title and youtube url
-		if usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctxGenerate, title, url); err == nil {
-			return usedModel, translatedTitle, summarizedContent, err
-		} else {
-			v(c.verbose, "failed to generate summary from youtube url: '%s', error: %s", url, gt.ErrToStr(err))
+		usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctxGenerate, title, url)
+		if err == nil {
+			return usedModel, translatedTitle, summarizedContent, nil
 		}
-	} else {
-		v(c.verbose, "summarizing content of url: %s", url)
 
-		// context with timeout
-		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
-		defer cancelGenerate()
-
-		// fetch the content of given url and summarize & translate it
-		var fetched []byte
-		var contentType string
-		if fetched, contentType, err = c.fetch(maxRetryCount, url, urlScrapper...); err == nil {
-			if isTextFormattableContent(contentType) { // use text prompt
-				prompt := fmt.Sprintf(summarizeContentPromptFormat, c.desiredLanguage, title, string(fetched))
-
-				if usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt); err == nil {
-					// FIXME: use the original title if translated title is empty
-					if len(translatedTitle) <= 0 {
-						translatedTitle = title
-					}
-					if len(summarizedContent) <= 0 {
-						summarizedContent = summarizedContentEmpty
-					}
-
-					return usedModel, translatedTitle, summarizedContent, err
-				} else {
-					v(c.verbose, "failed to generate summary with prompt: '%s', error: %s", prompt, gt.ErrToStr(err))
-				}
-			} else if isFileContent(contentType) { // use prompt with files
-				prompt := fmt.Sprintf(summarizeContentFilePromptFormat, c.desiredLanguage, title)
-
-				if usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt, fetched); err == nil {
-					// FIXME: use the original title if translated title is empty
-					if len(translatedTitle) <= 0 {
-						translatedTitle = title
-					}
-					if len(summarizedContent) <= 0 {
-						summarizedContent = summarizedContentEmpty
-					}
-
-					return usedModel, translatedTitle, summarizedContent, err
-				} else {
-					v(c.verbose, "failed to generate summary with prompt and file: '%s', error: %s", prompt, gt.ErrToStr(err))
-				}
-			} else {
-				err = fmt.Errorf("not a summarizable content type: %s", contentType)
-			}
-		} else {
-			if usedModel, translatedTitle, summarizedContent, err = c.summarizeURL(ctxGenerate, title, url, c.desiredLanguage); err == nil {
-				// FIXME: sometimes summarized results are empty
-				if len(summarizedContent) <= 0 {
-					summarizedContent = summarizedContentEmpty
-				}
-
-				return usedModel, translatedTitle, summarizedContent, err
-			} else {
-				v(c.verbose, "failed to generate summary with url: '%s', error: %s", url, gt.ErrToStr(err))
-			}
-		}
+		v(c.verbose, "failed to generate summary from youtube url: '%s', error: %s", url, gt.ErrToStr(err))
+		return usedModel, title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
 	}
 
-	// return error message
-	return usedModel, title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
+	v(c.verbose, "summarizing content of url: %s", url)
+
+	ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
+	defer cancelGenerate()
+
+	// try fetching the content
+	fetched, contentType, fetchErr := c.fetch(ctx, maxRetryCount, url, urlScrapper...)
+	if fetchErr != nil {
+		// fallback: summarize via Gemini URL context
+		usedModel, translatedTitle, summarizedContent, err = c.summarizeURL(ctxGenerate, title, url, c.desiredLanguage)
+		if err == nil {
+			if len(summarizedContent) <= 0 {
+				summarizedContent = summarizedContentEmpty
+			}
+			return usedModel, translatedTitle, summarizedContent, nil
+		}
+
+		v(c.verbose, "failed to generate summary with url: '%s', error: %s", url, gt.ErrToStr(err))
+		return usedModel, title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
+	}
+
+	// summarize fetched content based on type
+	switch {
+	case isTextFormattableContent(contentType):
+		prompt := fmt.Sprintf(summarizeContentPromptFormat, c.desiredLanguage, title, string(fetched))
+		usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt)
+	case isFileContent(contentType):
+		prompt := fmt.Sprintf(summarizeContentFilePromptFormat, c.desiredLanguage, title)
+		usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt, fetched)
+	default:
+		err = fmt.Errorf("not a summarizable content type: %s", contentType)
+	}
+
+	if err != nil {
+		v(c.verbose, "failed to generate summary for '%s', error: %s", url, gt.ErrToStr(err))
+		return usedModel, title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
+	}
+
+	if len(translatedTitle) <= 0 {
+		translatedTitle = title
+	}
+	if len(summarizedContent) <= 0 {
+		summarizedContent = summarizedContentEmpty
+	}
+
+	return usedModel, translatedTitle, summarizedContent, nil
 }
 
 // fetch url content with or without url scrapper
 func (c *Client) fetch(
+	ctx context.Context,
 	remainingRetryCount int,
 	url string,
 	urlScrapper ...*ssg.Scrapper,
 ) (scrapped []byte, contentType string, err error) {
-	contentType, _ = getContentType(url, c.verbose)
+	contentType, _ = getContentType(ctx, url, c.verbose)
 
 	if len(urlScrapper) > 0 && strings.HasPrefix(contentType, "text/html") { // if scrapper is given, and content-type is HTML, use it
 		scrapper := urlScrapper[0]
@@ -375,21 +378,21 @@ func (c *Client) fetch(
 			break
 		}
 	} else { // otherwise, use `fetchURLContent` function
-		scrapped, contentType, err = fetchURLContent(url, c.verbose)
+		scrapped, contentType, err = fetchURLContent(ctx, url, c.verbose)
 	}
 
 	// retry if needed
 	if err != nil && remainingRetryCount > 0 {
 		v(c.verbose, "retrying fetching from url '%s' (remaining count: %d)", url, remainingRetryCount)
 
-		return c.fetch(remainingRetryCount-1, url, urlScrapper...)
+		return c.fetch(ctx, remainingRetryCount-1, url, urlScrapper...)
 	}
 
 	// if all retries failed with urlScrapper, try without it
 	if err != nil && remainingRetryCount == 0 && len(urlScrapper) > 0 {
 		v(c.verbose, "fetching from url '%s' without url scrapper as a last try", url)
 
-		scrapped, contentType, err = fetchURLContent(url, c.verbose)
+		scrapped, contentType, err = fetchURLContent(ctx, url, c.verbose)
 	}
 
 	return scrapped, contentType, err
@@ -411,15 +414,19 @@ func (c *Client) ListCachedItems(includeItemsMarkedAsRead bool) []CachedItem {
 }
 
 // MarkCachedItemsAsRead marks given cached items as read.
-func (c *Client) MarkCachedItemsAsRead(items []CachedItem) {
+func (c *Client) MarkCachedItemsAsRead(items []CachedItem) error {
+	var errs []error
 	for _, item := range items {
-		c.cache.MarkAsRead(item.GUID)
+		if err := c.cache.MarkAsRead(item.GUID); err != nil {
+			errs = append(errs, err)
+		}
 	}
+	return errors.Join(errs...)
 }
 
 // DeleteOldCachedItems deletes old cached items.
-func (c *Client) DeleteOldCachedItems() {
-	c.cache.DeleteOlderThan1Month()
+func (c *Client) DeleteOldCachedItems() error {
+	return c.cache.DeleteOlderThan1Month()
 }
 
 // PublishXML returns XML bytes (application/rss+xml) of given cached items.

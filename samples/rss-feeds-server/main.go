@@ -39,7 +39,9 @@ func main() {
 		client.SetVerbose(verbose)
 
 		// delete old caches
-		client.DeleteOldCachedItems()
+		if err := client.DeleteOldCachedItems(); err != nil {
+			log.Printf("# failed to delete old cached items: %s", err)
+		}
 
 		// http handler
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

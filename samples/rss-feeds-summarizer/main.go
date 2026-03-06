@@ -19,7 +19,8 @@ const (
 
 	noSummary = "<<< no summary >>>"
 
-	fetchTimeoutSeconds = 30
+	fetchTimeoutSeconds     = 30
+	summarizeTimeoutSeconds = 10 * 60
 
 	ignoreItemsOlderThanDays = 7
 )
@@ -43,7 +44,11 @@ func main() {
 		defer cancelFetch()
 
 		if feeds, err := client.FetchFeeds(ctxFetch, true, ignoreItemsOlderThanDays); err == nil {
-			err := client.SummarizeAndCacheFeeds(feeds)
+			// context with timeout (summarize)
+			ctxSummarize, cancelSummarize := context.WithTimeout(context.Background(), summarizeTimeoutSeconds*time.Second)
+			defer cancelSummarize()
+
+			err := client.SummarizeAndCacheFeeds(ctxSummarize, feeds)
 			if err != nil {
 				log.Printf("# summary failed with some errors: %s", err)
 			}
@@ -76,7 +81,9 @@ func main() {
 			log.Printf(">>> fetched %d new item(s).", len(items))
 
 			// and mark as read
-			client.MarkCachedItemsAsRead(items)
+			if err := client.MarkCachedItemsAsRead(items); err != nil {
+				log.Printf("# failed to mark items as read: %s", err)
+			}
 
 			log.Printf(">>> marked %d item(s) as read.", len(items))
 		} else {
@@ -84,7 +91,9 @@ func main() {
 		}
 
 		// delete old caches
-		client.DeleteOldCachedItems()
+		if err := client.DeleteOldCachedItems(); err != nil {
+			log.Printf("# failed to delete old cached items: %s", err)
+		}
 	} else {
 		log.Printf("# failed to create a client: %s", err)
 	}
