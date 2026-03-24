@@ -267,6 +267,10 @@ outer:
 				)
 			}
 
+			// trim translated/summarized contents
+			translatedTitle = strings.TrimSpace(translatedTitle)
+			summarizedContent = strings.TrimSpace(summarizedContent)
+
 			// cache, (or update)
 			if cacheErr := c.cache.Save(*item, translatedTitle, summarizedContent); cacheErr != nil {
 				errs = append(errs, fmt.Errorf("failed to cache item '%s': %w", item.Title, cacheErr))
