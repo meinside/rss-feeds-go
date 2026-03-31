@@ -325,8 +325,8 @@ func TestPublishXML(t *testing.T) {
 		t.Error("expected item without summary to be omitted")
 	}
 
-	// should contain bold formatting
-	if !strings.Contains(xmlStr, "<b>summary</b>") {
+	// should contain bold formatting (goldmark uses <strong>)
+	if !strings.Contains(xmlStr, "<strong>summary</strong>") {
 		t.Error("expected bold formatting in XML")
 	}
 
