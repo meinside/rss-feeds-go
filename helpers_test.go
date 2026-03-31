@@ -25,59 +25,127 @@ func TestGetContentType(t *testing.T) {
 	}
 }
 
-// test `decorateHTML`
+// test `decorateHTML` with goldmark-based markdown conversion
 func TestDecorateHTML(t *testing.T) {
-	for original, expected := range map[string]string{
-		"line 1\nline 2\n\nlast line\n":                     "line 1<br>line 2<br><br>last line<br>",
-		"following **text** should be bolded! **":           "following <b>text</b> should be bolded! **",
-		"text with <html tags> should be **escaped** first": "text with &lt;html tags&gt; should be <b>escaped</b> first",
-		`**bold text
-over multiple
-lines**`: `<b>bold text<br>over multiple<br>lines</b>`,
-	} {
-		if decorated := decorateHTML(original); decorated != expected {
-			t.Errorf("expected decorated html: '%s' vs actual: '%s'", expected, decorated)
-		}
-	}
-}
-
-// test `decorateHTML` with extended markdown patterns
-func TestDecorateHTMLExtended(t *testing.T) {
 	tests := []struct {
+		name     string
 		input    string
 		expected string
 	}{
-		// italic
+		// basic text
 		{
+			"paragraphs",
+			"line 1\nline 2\n\nlast line",
+			"<p>line 1\nline 2</p>\n<p>last line</p>\n",
+		},
+		// bold (**text**)
+		{
+			"bold asterisk",
+			"following **text** should be bolded",
+			"<p>following <strong>text</strong> should be bolded</p>\n",
+		},
+		// bold (__text__)
+		{
+			"bold underscore",
+			"this is __bold__ text",
+			"<p>this is <strong>bold</strong> text</p>\n",
+		},
+		// italic (*text*)
+		{
+			"italic asterisk",
 			"this is *italic* text",
-			"this is <i>italic</i> text",
+			"<p>this is <em>italic</em> text</p>\n",
 		},
-		// inline code
+		// italic (_text_)
 		{
-			"use `fmt.Println` here",
-			"use <code>fmt.Println</code> here",
-		},
-		// link
-		{
-			"click [here](https://example.com) now",
-			`click <a href="https://example.com">here</a> now`,
+			"italic underscore",
+			"this is _italic_ text",
+			"<p>this is <em>italic</em> text</p>\n",
 		},
 		// bold + italic combined
 		{
+			"bold and italic",
 			"**bold** and *italic*",
-			"<b>bold</b> and <i>italic</i>",
+			"<p><strong>bold</strong> and <em>italic</em></p>\n",
 		},
-		// multiple patterns
+		// inline code
 		{
+			"inline code",
+			"use `fmt.Println` here",
+			"<p>use <code>fmt.Println</code> here</p>\n",
+		},
+		// link
+		{
+			"link",
+			"click [here](https://example.com) now",
+			"<p>click <a href=\"https://example.com\">here</a> now</p>\n",
+		},
+		// multiple inline patterns
+		{
+			"multiple patterns",
 			"**bold** with `code` and [link](https://x.com)",
-			`<b>bold</b> with <code>code</code> and <a href="https://x.com">link</a>`,
+			"<p><strong>bold</strong> with <code>code</code> and <a href=\"https://x.com\">link</a></p>\n",
+		},
+		// multiline bold
+		{
+			"multiline bold",
+			"**bold text\nover multiple\nlines**",
+			"<p><strong>bold text\nover multiple\nlines</strong></p>\n",
+		},
+		// HTML tags in source are sanitized
+		{
+			"html tags escaped",
+			"text with <script>alert(1)</script> inside",
+			"<p>text with <!-- raw HTML omitted -->alert(1)<!-- raw HTML omitted --> inside</p>\n",
+		},
+		// code block
+		{
+			"fenced code block",
+			"```\nfmt.Println(\"hello\")\n```",
+			"<pre><code>fmt.Println(&quot;hello&quot;)\n</code></pre>\n",
+		},
+		// code block with language
+		{
+			"fenced code block with lang",
+			"```go\nfmt.Println(\"hello\")\n```",
+			"<pre><code class=\"language-go\">fmt.Println(&quot;hello&quot;)\n</code></pre>\n",
+		},
+		// unordered list
+		{
+			"unordered list",
+			"- item 1\n- item 2\n- item 3",
+			"<ul>\n<li>item 1</li>\n<li>item 2</li>\n<li>item 3</li>\n</ul>\n",
+		},
+		// ordered list
+		{
+			"ordered list",
+			"1. first\n2. second\n3. third",
+			"<ol>\n<li>first</li>\n<li>second</li>\n<li>third</li>\n</ol>\n",
+		},
+		// heading
+		{
+			"heading",
+			"# Title\n\nSome text",
+			"<h1>Title</h1>\n<p>Some text</p>\n",
 		},
 	}
 
 	for _, tt := range tests {
-		if got := decorateHTML(tt.input); got != tt.expected {
-			t.Errorf("decorateHTML(%q) = %q, want %q", tt.input, got, tt.expected)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			if got := decorateHTML(tt.input); got != tt.expected {
+				t.Errorf("decorateHTML(%q)\n  got:  %q\n  want: %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// test `decorateHTML` with error body (should return as-is, not run through goldmark)
+func TestDecorateHTMLError(t *testing.T) {
+	errorBody := ErrorPrefixSummaryFailedWithError + ": some error\n<hr>\n<p>original</p>"
+	got := decorateHTML(errorBody)
+
+	if got != errorBody {
+		t.Errorf("expected error body returned as-is\n  got:  %q\n  want: %q", got, errorBody)
 	}
 }
 
