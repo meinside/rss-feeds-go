@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -28,6 +29,8 @@ const (
 	defaultDesiredLanguage          = "English"
 
 	maxRetryCount = 3
+
+	defaultCooldownSeconds = 60 // fallback cooldown when retryDelay is missing
 )
 
 const (
@@ -48,7 +51,17 @@ type Client struct {
 	summarizeIntervalSeconds int
 	verbose                  bool
 
+	combos        []keyModelCombo
+	cooldownUntil map[int]time.Time
+	cooldownMu    sync.Mutex
+
 	_numRequests atomic.Int64
+}
+
+// keyModelCombo is a single (api key, model) pairing subject to quota.
+type keyModelCombo struct {
+	apiKey string
+	model  string
 }
 
 // NewClient returns a new client with memory cache.
@@ -56,7 +69,7 @@ func NewClient(
 	googleAIAPIKeys []string,
 	feedsURLs []string,
 ) *Client {
-	return &Client{
+	c := &Client{
 		feedsURLs: feedsURLs,
 		cache:     newMemCache(),
 
@@ -66,6 +79,8 @@ func NewClient(
 		desiredLanguage:          defaultDesiredLanguage,
 		summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
 	}
+	c.buildCombos()
+	return c
 }
 
 // NewClientWithDB returns a new client with SQLite DB cache.
@@ -75,7 +90,7 @@ func NewClientWithDB(
 	dbFilepath string,
 ) (client *Client, err error) {
 	if dbCache, err := newDBCache(dbFilepath); err == nil {
-		return &Client{
+		c := &Client{
 			feedsURLs: feedsURLs,
 			cache:     dbCache,
 
@@ -84,7 +99,9 @@ func NewClientWithDB(
 
 			desiredLanguage:          defaultDesiredLanguage,
 			summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
-		}, nil
+		}
+		c.buildCombos()
+		return c, nil
 	} else {
 		return nil, fmt.Errorf("failed to create a client with DB: %w", err)
 	}
@@ -93,6 +110,22 @@ func NewClientWithDB(
 // SetGoogleAIModels sets the client's Google AI models.
 func (c *Client) SetGoogleAIModels(models []string) {
 	c.googleAIModels = models
+	c.buildCombos()
+}
+
+// buildCombos rebuilds the (key, model) combination list and resets cooldowns.
+func (c *Client) buildCombos() {
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+
+	combos := make([]keyModelCombo, 0, len(c.googleAIAPIKeys)*len(c.googleAIModels))
+	for _, key := range c.googleAIAPIKeys {
+		for _, model := range c.googleAIModels {
+			combos = append(combos, keyModelCombo{apiKey: key, model: model})
+		}
+	}
+	c.combos = combos
+	c.cooldownUntil = map[int]time.Time{}
 }
 
 // SetDesiredLanguage sets the client's desired language for summaries.
@@ -402,14 +435,57 @@ func (c *Client) fetch(
 	return scrapped, contentType, err
 }
 
-// get rotated api key and model
-func (c *Client) rotatedAPIKeyAndModel() (rotatedAPIKey, rotatedModel string) {
-	n := int(c._numRequests.Add(1) - 1)
+// ErrNoAvailableAPIKey is returned when every (key, model) combo is in cooldown.
+var ErrNoAvailableAPIKey = errors.New("no available api key/model (all in cooldown)")
 
-	rotatedAPIKey = c.googleAIAPIKeys[n%len(c.googleAIAPIKeys)]
-	rotatedModel = c.googleAIModels[n%len(c.googleAIModels)]
+// cooldownDuration derives a cooldown duration from a quota (429) error,
+// preferring the server-provided RetryInfo.retryDelay and falling back to
+// defaultCooldownSeconds.
+func cooldownDuration(err error) time.Duration {
+	return parseRetryDelay(gt.ErrDetails(err))
+}
 
-	return rotatedAPIKey, rotatedModel
+// parseRetryDelay extracts google.rpc.RetryInfo.retryDelay (e.g. "37s") from
+// error details. Returns the fallback cooldown if absent or unparsable.
+func parseRetryDelay(details []map[string]any) time.Duration {
+	fallback := time.Duration(defaultCooldownSeconds) * time.Second
+
+	for _, d := range details {
+		t, _ := d["@type"].(string)
+		if !strings.Contains(t, "RetryInfo") {
+			continue
+		}
+		delay, ok := d["retryDelay"].(string)
+		if !ok {
+			return fallback
+		}
+		if parsed, perr := time.ParseDuration(delay); perr == nil && parsed > 0 {
+			return parsed
+		}
+		return fallback
+	}
+	return fallback
+}
+
+// pickAvailableCombo returns the next combo (round-robin from the global
+// counter) whose cooldown has expired at `now`. ok is false if all combos
+// are still in cooldown.
+func (c *Client) pickAvailableCombo(now time.Time) (combo keyModelCombo, idx int, ok bool) {
+	start := int(c._numRequests.Add(1) - 1)
+
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+
+	n := len(c.combos)
+	for i := 0; i < n; i++ {
+		candidate := (start + i) % n
+		until, inCooldown := c.cooldownUntil[candidate]
+		if inCooldown && until.After(now) {
+			continue
+		}
+		return c.combos[candidate], candidate, true
+	}
+	return keyModelCombo{}, 0, false
 }
 
 // ListCachedItems lists cached items.

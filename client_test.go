@@ -202,20 +202,26 @@ func TestClientSetters(t *testing.T) {
 	client.SetVerbose(false)
 }
 
-// test `rotatedAPIKeyAndModel`
-func TestRotatedAPIKeyAndModel(t *testing.T) {
+// test `pickAvailableCombo` round-robins over every (key, model) combo
+func TestPickAvailableComboCoversAllPairs(t *testing.T) {
 	client := NewClient([]string{"key-a", "key-b"}, nil)
 	client.SetGoogleAIModels([]string{"model-x", "model-y", "model-z"})
 
-	key0, model0 := client.rotatedAPIKeyAndModel()
-	key1, model1 := client.rotatedAPIKeyAndModel()
-	key2, model2 := client.rotatedAPIKeyAndModel()
+	now := time.Unix(1_000_000, 0)
 
-	if key0 != "key-a" || key1 != "key-b" || key2 != "key-a" {
-		t.Errorf("unexpected key rotation: %q, %q, %q", key0, key1, key2)
+	seen := map[keyModelCombo]bool{}
+	for i := 0; i < 6; i++ {
+		combo, _, ok := client.pickAvailableCombo(now)
+		if !ok {
+			t.Fatalf("expected ok on iteration %d", i)
+		}
+		if seen[combo] {
+			t.Errorf("combo %+v seen twice within one full cycle", combo)
+		}
+		seen[combo] = true
 	}
-	if model0 != "model-x" || model1 != "model-y" || model2 != "model-z" {
-		t.Errorf("unexpected model rotation: %q, %q, %q", model0, model1, model2)
+	if len(seen) != 6 {
+		t.Errorf("expected all 6 combos covered, got %d", len(seen))
 	}
 }
 
