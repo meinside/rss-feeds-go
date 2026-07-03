@@ -57,23 +57,62 @@ referring to the summarized content:
 	generationTimeoutSecondsForYoutube = 5 * 60 // timeout seconds for summary of youtube video
 )
 
-// newGeminiClient creates a new gemini-things client with rotated API key and model,
-// and sets up the system instruction. Caller must close the returned client.
-func (c *Client) newGeminiClient() (gtc *gt.Client, usedModel string, err error) {
-	var usedAPIKey string
-	usedAPIKey, usedModel = c.rotatedAPIKeyAndModel()
+// markCooldown records a cooldown expiry for the given combo index based on
+// the quota error's RetryInfo (falling back to the default).
+func (c *Client) markCooldown(idx int, err error, now time.Time) {
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+	c.cooldownUntil[idx] = now.Add(cooldownDuration(err))
+}
 
+// newGeminiClientForCombo builds a gemini-things client for a specific combo
+// and installs the system instruction. Caller must close the returned client.
+func (c *Client) newGeminiClientForCombo(combo keyModelCombo) (gtc *gt.Client, err error) {
 	gtc, err = gt.NewClient(
-		usedAPIKey,
-		gt.WithModel(usedModel),
+		combo.apiKey,
+		gt.WithModel(combo.model),
 	)
 	if err != nil {
-		return nil, usedModel, fmt.Errorf("error initializing gemini-things client: %w", err)
+		return nil, fmt.Errorf("error initializing gemini-things client: %w", err)
 	}
-
 	gtc.SetSystemInstructionFunc(systemInstructionForTranslationAndSummary)
+	return gtc, nil
+}
 
-	return gtc, usedModel, nil
+// withFailover picks an available combo, runs `run`, and on a quota (429)
+// error marks that combo's cooldown and retries with the next available
+// combo. Non-429 errors are returned immediately. Returns ErrNoAvailableAPIKey
+// if every combo is exhausted or in cooldown.
+func (c *Client) withFailover(
+	now func() time.Time,
+	run func(gtc *gt.Client, model string) error,
+) (usedModel string, err error) {
+	attempts := len(c.combos)
+	for i := 0; i < attempts; i++ {
+		combo, idx, ok := c.pickAvailableCombo(now())
+		if !ok {
+			return usedModel, ErrNoAvailableAPIKey
+		}
+		usedModel = combo.model
+
+		gtc, cerr := c.newGeminiClientForCombo(combo)
+		if cerr != nil {
+			return usedModel, cerr
+		}
+
+		runErr := run(gtc, combo.model)
+		closeGeminiClient(gtc)
+
+		if runErr == nil {
+			return usedModel, nil
+		}
+		if gt.IsQuotaExceeded(runErr) {
+			c.markCooldown(idx, runErr, now())
+			continue
+		}
+		return usedModel, runErr
+	}
+	return usedModel, ErrNoAvailableAPIKey
 }
 
 // closeGeminiClient closes the gemini-things client, logging any errors.
@@ -89,28 +128,28 @@ func (c *Client) translateAndSummarize(
 	prompt string,
 	files ...[]byte,
 ) (usedModel, translatedTitle, summarizedContent string, err error) {
-	gtc, usedModel, err := c.newGeminiClient()
-	if err != nil {
-		return usedModel, "", "", err
-	}
-	setCustomFileConverters(gtc)
-	defer closeGeminiClient(gtc)
-
-	// prompt & files
-	prompts := []gt.Prompt{gt.PromptFromText(prompt)}
-	for i, file := range files {
-		prompts = append(prompts, gt.PromptFromFile(fmt.Sprintf("file %d", i+1), bytes.NewReader(file)))
-	}
-
-	// context with timeout (prompts => contents)
-	ctxContents, cancelContents := context.WithTimeout(ctx, time.Duration(requestTimeoutSeconds)*time.Second)
-	defer cancelContents()
-
-	// output buffer
 	buffer := strings.Builder{}
 
-	var contents []*genai.Content
-	if contents, err = gtc.PromptsToContents(ctxContents, prompts, nil); err == nil {
+	usedModel, err = c.withFailover(time.Now, func(gtc *gt.Client, model string) error {
+		buffer.Reset()
+		translatedTitle = ""
+		setCustomFileConverters(gtc)
+
+		// prompt & files
+		prompts := []gt.Prompt{gt.PromptFromText(prompt)}
+		for i, file := range files {
+			prompts = append(prompts, gt.PromptFromFile(fmt.Sprintf("file %d", i+1), bytes.NewReader(file)))
+		}
+
+		// context with timeout (prompts => contents)
+		ctxContents, cancelContents := context.WithTimeout(ctx, time.Duration(requestTimeoutSeconds)*time.Second)
+		defer cancelContents()
+
+		contents, cerr := gtc.PromptsToContents(ctxContents, prompts, nil)
+		if cerr != nil {
+			return fmt.Errorf("failed to convert prompts/files to contents: %w", cerr)
+		}
+
 		// set function call
 		options := genOptions()
 
@@ -118,50 +157,43 @@ func (c *Client) translateAndSummarize(
 		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, time.Duration(generationTimeoutSeconds)*time.Second)
 		defer cancelGenerate()
 
-		// generate
-		var result *genai.GenerateContentResponse
-		if result, err = gtc.Generate(
-			ctxGenerate,
-			contents,
-			options,
-		); err == nil {
-		loopCandidates:
-			for _, cand := range result.Candidates {
-				if cand.Content != nil {
-					for _, part := range cand.Content.Parts {
-						if part.FunctionCall != nil {
-							var content string
-							if translatedTitle, content, err = extractTranslatedTitleAndSummarizedContent(part.FunctionCall); err != nil {
-								break loopCandidates
-							}
-							buffer.WriteString(content)
+		result, gerr := gtc.Generate(ctxGenerate, contents, options)
+		if gerr != nil {
+			return gerr
+		}
+
+		for _, cand := range result.Candidates {
+			if cand.Content != nil {
+				for _, part := range cand.Content.Parts {
+					if part.FunctionCall != nil {
+						title, content, xerr := extractTranslatedTitleAndSummarizedContent(part.FunctionCall)
+						if xerr != nil {
+							return xerr
+						}
+						translatedTitle = title
+						buffer.WriteString(content)
+					} else {
+						// FIXME: sometimes there is no function call but text in returned part
+						if len(part.Text) > 0 {
+							buffer.WriteString(part.Text) // append text
 						} else {
-							// FIXME: sometimes there is no function call but text in returned part
-							if len(part.Text) > 0 {
-								buffer.WriteString(part.Text) // append text
-							} else {
-								err = fmt.Errorf("no function call nor text in part: %s", Prettify(part))
-								break loopCandidates
-							}
+							return fmt.Errorf("no function call nor text in part: %s", Prettify(part))
 						}
 					}
-				} else {
-					if cand.FinishReason != genai.FinishReasonUnspecified {
-						err = fmt.Errorf("generation was terminated due to: %s", cand.FinishReason)
-					} else {
-						err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(cand))
-					}
-					break loopCandidates
 				}
+			} else {
+				if cand.FinishReason != genai.FinishReasonUnspecified {
+					return fmt.Errorf("generation was terminated due to: %s", cand.FinishReason)
+				}
+				return fmt.Errorf("returned content of candidate is nil: %s", Prettify(cand))
 			}
 		}
-	} else {
-		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
-	}
 
-	if err == nil && buffer.Len() <= 0 {
-		err = fmt.Errorf("summarized content was empty [%s]", usedModel)
-	}
+		if buffer.Len() <= 0 {
+			return fmt.Errorf("summarized content was empty [%s]", model)
+		}
+		return nil
+	})
 
 	return usedModel, translatedTitle, buffer.String(), err
 }
@@ -173,23 +205,25 @@ func (c *Client) summarizeURL(
 	url string,
 	desiredLanguage string,
 ) (usedModel, untouchedTitle string, summarizedContent string, err error) {
-	gtc, usedModel, err := c.newGeminiClient()
-	if err != nil {
-		return usedModel, "", "", err
-	}
-	defer closeGeminiClient(gtc)
+	outBuffer := new(strings.Builder)
 
-	// prompts
-	prompts := []gt.Prompt{
-		gt.PromptFromText(fmt.Sprintf(summarizeContentURLFormat, desiredLanguage, url)),
-	}
+	usedModel, err = c.withFailover(time.Now, func(gtc *gt.Client, model string) error {
+		outBuffer.Reset()
 
-	// context with timeout (prompts => contents)
-	ctxContents, cancelContents := context.WithTimeout(ctx, requestTimeoutSeconds*time.Second)
-	defer cancelContents()
+		// prompts
+		prompts := []gt.Prompt{
+			gt.PromptFromText(fmt.Sprintf(summarizeContentURLFormat, desiredLanguage, url)),
+		}
 
-	var contents []*genai.Content
-	if contents, err = gtc.PromptsToContents(ctxContents, prompts, nil); err == nil {
+		// context with timeout (prompts => contents)
+		ctxContents, cancelContents := context.WithTimeout(ctx, requestTimeoutSeconds*time.Second)
+		defer cancelContents()
+
+		contents, cerr := gtc.PromptsToContents(ctxContents, prompts, nil)
+		if cerr != nil {
+			return fmt.Errorf("failed to convert prompts/files to contents: %w", cerr)
+		}
+
 		// use url context
 		options := &genai.GenerateContentConfig{
 			Tools: []*genai.Tool{
@@ -199,48 +233,39 @@ func (c *Client) summarizeURL(
 			},
 		}
 
-		outBuffer := new(strings.Builder)
-
 		// context with timeout (generation)
 		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
 		defer cancelGenerate()
 
-		// generate
-		var result *genai.GenerateContentResponse
-		if result, err = gtc.Generate(
-			ctxGenerate,
-			contents,
-			options,
-		); err == nil {
-			if len(result.Candidates) > 0 {
-				candidate := result.Candidates[0]
+		result, gerr := gtc.Generate(ctxGenerate, contents, options)
+		if gerr != nil {
+			return gerr
+		}
 
-				if content := candidate.Content; content != nil {
-					for _, part := range content.Parts {
-						if len(part.Text) > 0 {
-							outBuffer.WriteString(part.Text)
-						}
-					}
-				} else {
-					if candidate.FinishReason != genai.FinishReasonUnspecified {
-						err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
-					} else {
-						err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
+		if len(result.Candidates) > 0 {
+			candidate := result.Candidates[0]
+
+			if content := candidate.Content; content != nil {
+				for _, part := range content.Parts {
+					if len(part.Text) > 0 {
+						outBuffer.WriteString(part.Text)
 					}
 				}
+			} else {
+				if candidate.FinishReason != genai.FinishReasonUnspecified {
+					return fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
+				}
+				return fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
 			}
 		}
 
-		summarizedContent = outBuffer.String()
-
-		if err == nil && len(summarizedContent) <= 0 {
-			err = fmt.Errorf("summarized content was empty")
+		if outBuffer.Len() <= 0 {
+			return fmt.Errorf("summarized content was empty")
 		}
-	} else {
-		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
-	}
+		return nil
+	})
 
-	return usedModel, title, summarizedContent, err
+	return usedModel, title, outBuffer.String(), err
 }
 
 // translate and summarize given youtube url
@@ -249,54 +274,49 @@ func (c *Client) translateAndSummarizeYouTube(
 	title string,
 	url string,
 ) (usedModel, translatedTitle, summarizedContent string, err error) {
-	gtc, usedModel, err := c.newGeminiClient()
-	if err != nil {
-		return usedModel, "", "", err
-	}
-	setCustomFileConverters(gtc)
-	defer closeGeminiClient(gtc)
+	usedModel, err = c.withFailover(time.Now, func(gtc *gt.Client, model string) error {
+		translatedTitle, summarizedContent = "", ""
+		setCustomFileConverters(gtc)
 
-	// prompts
-	prompts := []gt.Prompt{
-		gt.PromptFromText(fmt.Sprintf(summarizeYouTubePromptFormat, c.desiredLanguage, title)),
-		gt.PromptFromURI(url, `video/mp4`),
-	}
+		// prompts
+		prompts := []gt.Prompt{
+			gt.PromptFromText(fmt.Sprintf(summarizeYouTubePromptFormat, c.desiredLanguage, title)),
+			gt.PromptFromURI(url, `video/mp4`),
+		}
 
-	var contents []*genai.Content
-	if contents, err = gtc.PromptsToContents(ctx, prompts, nil); err == nil {
+		contents, cerr := gtc.PromptsToContents(ctx, prompts, nil)
+		if cerr != nil {
+			return fmt.Errorf("failed to convert prompts/files to contents: %w", cerr)
+		}
+
 		// set function call
 		options := genOptions()
 
-		// generate
-		var result *genai.GenerateContentResponse
-		if result, err = gtc.Generate(
-			ctx,
-			contents,
-			options,
-		); err == nil {
-			if len(result.Candidates) > 0 {
-				candidate := result.Candidates[0]
+		result, gerr := gtc.Generate(ctx, contents, options)
+		if gerr != nil {
+			return gerr
+		}
 
-				if content := candidate.Content; content != nil {
-					for _, part := range content.Parts {
-						if part.FunctionCall != nil {
-							if translatedTitle, summarizedContent, err = extractTranslatedTitleAndSummarizedContent(part.FunctionCall); err != nil {
-								break
-							}
+		if len(result.Candidates) > 0 {
+			candidate := result.Candidates[0]
+
+			if content := candidate.Content; content != nil {
+				for _, part := range content.Parts {
+					if part.FunctionCall != nil {
+						if translatedTitle, summarizedContent, cerr = extractTranslatedTitleAndSummarizedContent(part.FunctionCall); cerr != nil {
+							return cerr
 						}
 					}
-				} else {
-					if candidate.FinishReason != genai.FinishReasonUnspecified {
-						err = fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
-					} else {
-						err = fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
-					}
 				}
+			} else {
+				if candidate.FinishReason != genai.FinishReasonUnspecified {
+					return fmt.Errorf("generation was terminated due to: %s", candidate.FinishReason)
+				}
+				return fmt.Errorf("returned content of candidate is nil: %s", Prettify(candidate))
 			}
 		}
-	} else {
-		err = fmt.Errorf("failed to convert prompts/files to contents: %w", err)
-	}
+		return nil
+	})
 
 	return usedModel, translatedTitle, summarizedContent, err
 }
