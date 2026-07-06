@@ -105,8 +105,8 @@ github.com/meinside/gemini-things-go v0.5.43 h1:c6fJFO8tL/KIilMERl9O2eld4H64IkYd
 github.com/meinside/gemini-things-go v0.5.43/go.mod h1:teiPD23L25ixhmxubnQmpilkhDGOyvAdcKyFLmaXcPs=
 github.com/meinside/randomized-string-generator-go v0.0.1 h1:Pz1rHWe6QY5SKk68/XbYJBtA4Qro4JdxfUtzEMnjWC0=
 github.com/meinside/randomized-string-generator-go v0.0.1/go.mod h1:3Vw7LjCeK+xoR3y91MDZgoe3HgfxZvFZ8q2Mi3k3yx4=
-github.com/meinside/simple-scrapper-go v0.0.17 h1:NQh3tvw16QeWPOLNUXImDT24vBHbkvIORWmSkk8nNGY=
-github.com/meinside/simple-scrapper-go v0.0.17/go.mod h1:D9YaXHW5T8ka9opGLYYcoyorcKS09QMPHAvrPh9s8SE=
+github.com/meinside/simple-scrapper-go v0.0.18 h1:4zJehLmtQAW6So/2Y6I5vR0IpcTYze2Zn4IB2JX+Ed4=
+github.com/meinside/simple-scrapper-go v0.0.18/go.mod h1:12gIUh5KvclFgdZCUX2vpbA+pRIHCc6p44XGs0dOh8U=
 github.com/mmcdole/gofeed v1.3.0 h1:5yn+HeqlcvjMeAI4gu6T+crm7d0anY85+M+v6fIFNG4=
 github.com/mmcdole/gofeed v1.3.0/go.mod h1:9TGv2LcJhdXePDzxiuMnukhV2/zb6VtnZt1mS+SjkLE=
 github.com/mmcdole/goxpp v1.1.1 h1:RGIX+D6iQRIunGHrKqnA2+700XMCnNv0bAOOv5MUhx8=
@@ -118,10 +118,10 @@ github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd h1:TRLaZ9cD/w
 github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd/go.mod h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q=
 github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9Gz0M=
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
+github.com/mxschmitt/playwright-go v0.6100.0 h1:HYNnbGZsTHz8veJyDGe4fU1iPxfvXqzmwKchzuvGCsY=
+github.com/mxschmitt/playwright-go v0.6100.0/go.mod h1:A7VtrS3j/c8ToGnSVUaOfNtQQVxi6JotUS0jeuus6r4=
 github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 h1:GFCKgmp0tecUJ0sJuv4pzYCqS9+RGSn52M3FUwPs+uo=
 github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10/go.mod h1:t/avpk3KcrXxUnYOhZhMXJlSEyie6gQbtLq5NM3loB8=
-github.com/playwright-community/playwright-go v0.6000.0 h1:R7sENcRI6n0Zd5ZoW8EKdVF1ZVJgvTubfJeqKHNGvsw=
-github.com/playwright-community/playwright-go v0.6000.0/go.mod h1:z/YpFVdU4LAi+0f9VPOCkGvmdH6dCrtza9nxnXFXgiE=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 h1:Jamvg5psRIccs7FGNTlIRMkT8wgtp5eCXdBlqhYGL6U=
 github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
