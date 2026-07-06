@@ -323,6 +323,15 @@ outer:
 	return nil
 }
 
+// failedSummary builds the cached content for a failed summary, including the
+// used model in the error prefix when known.
+func failedSummary(usedModel string, err error) string {
+	if usedModel != "" {
+		return fmt.Sprintf("%s [%s]: %s", ErrorPrefixSummaryFailedWithError, usedModel, gt.ErrToStr(err))
+	}
+	return fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err))
+}
+
 // summarize the content of given `url`
 func (c *Client) summarize(
 	ctx context.Context,
@@ -343,7 +352,7 @@ func (c *Client) summarize(
 		}
 
 		v(c.verbose, "failed to generate summary from youtube url: '%s', error: %s", url, gt.ErrToStr(err))
-		return usedModel, title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
+		return usedModel, title, failedSummary(usedModel, err), err
 	}
 
 	v(c.verbose, "summarizing content of url: %s", url)
@@ -364,7 +373,7 @@ func (c *Client) summarize(
 		}
 
 		v(c.verbose, "failed to generate summary with url: '%s', error: %s", url, gt.ErrToStr(err))
-		return usedModel, title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
+		return usedModel, title, failedSummary(usedModel, err), err
 	}
 
 	// summarize fetched content based on type
@@ -381,7 +390,7 @@ func (c *Client) summarize(
 
 	if err != nil {
 		v(c.verbose, "failed to generate summary for '%s', error: %s", url, gt.ErrToStr(err))
-		return usedModel, title, fmt.Sprintf("%s: %s", ErrorPrefixSummaryFailedWithError, gt.ErrToStr(err)), err
+		return usedModel, title, failedSummary(usedModel, err), err
 	}
 
 	if len(translatedTitle) <= 0 {

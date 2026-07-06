@@ -2,6 +2,7 @@ package rf
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -212,5 +213,25 @@ func TestWithFailoverNonQuotaErrorReturnsImmediately(t *testing.T) {
 	}
 	if len(c.cooldownUntil) != 0 {
 		t.Errorf("non-429 must not mark cooldown, got %d", len(c.cooldownUntil))
+	}
+}
+
+func TestFailedSummaryIncludesModel(t *testing.T) {
+	err := errors.New("boom 429")
+
+	withModel := failedSummary("gemini-3-flash-preview", err)
+	if !strings.HasPrefix(withModel, ErrorPrefixSummaryFailedWithError) {
+		t.Errorf("missing error prefix: %q", withModel)
+	}
+	if !strings.Contains(withModel, "[gemini-3-flash-preview]") {
+		t.Errorf("expected model in message, got %q", withModel)
+	}
+
+	noModel := failedSummary("", err)
+	if !strings.HasPrefix(noModel, ErrorPrefixSummaryFailedWithError) {
+		t.Errorf("missing error prefix: %q", noModel)
+	}
+	if strings.Contains(noModel, "[") {
+		t.Errorf("expected no model bracket when model empty, got %q", noModel)
 	}
 }

@@ -6,7 +6,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/gorilla/feeds v1.2.0
 	github.com/meinside/gemini-things-go v0.5.43
-	github.com/meinside/simple-scrapper-go v0.0.17
+	github.com/meinside/simple-scrapper-go v0.0.18
 	github.com/mmcdole/gofeed v1.3.0
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd
 	github.com/yuin/goldmark v1.8.2
@@ -56,8 +56,8 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.6.1 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
+	github.com/mxschmitt/playwright-go v0.6100.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
-	github.com/playwright-community/playwright-go v0.6000.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.8.1 // indirect
