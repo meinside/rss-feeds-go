@@ -17,7 +17,7 @@ func TestBuildCombos(t *testing.T) {
 		t.Fatalf("expected 6 combos, got %d", len(c.combos))
 	}
 
-	// 첫 조합은 (k1, m1), 마지막은 (k2, m3) 순서 (key 바깥 루프, model 안쪽 루프)
+	// combos are ordered (k1,m1) first ... (k2,m3) last (key outer loop, model inner loop)
 	if c.combos[0] != (keyModelCombo{apiKey: "k1", model: "m1"}) {
 		t.Errorf("combos[0] = %+v", c.combos[0])
 	}
@@ -25,7 +25,7 @@ func TestBuildCombos(t *testing.T) {
 		t.Errorf("combos[5] = %+v", c.combos[5])
 	}
 
-	// SetGoogleAIModels 재호출 시 cooldownUntil 리셋 확인
+	// re-calling SetGoogleAIModels resets cooldownUntil
 	c.cooldownUntil[0] = timeNowForTest()
 	c.SetGoogleAIModels([]string{"m1"})
 	if len(c.cooldownUntil) != 0 {
@@ -62,7 +62,7 @@ func TestPickAvailableComboSkipsCooldown(t *testing.T) {
 	c.SetGoogleAIModels([]string{"m1"}) // idx0=(k1,m1), idx1=(k2,m1)
 
 	now := time.Unix(1_000_000, 0)
-	c.cooldownUntil[0] = now.Add(30 * time.Second) // k1 조합 쿨다운
+	c.cooldownUntil[0] = now.Add(30 * time.Second) // put k1 combo in cooldown
 
 	for i := 0; i < 3; i++ {
 		combo, idx, ok := c.pickAvailableCombo(now)
@@ -77,7 +77,7 @@ func TestPickAvailableComboSkipsCooldown(t *testing.T) {
 
 func TestPickAvailableComboAllCooldown(t *testing.T) {
 	c := NewClient([]string{"k1"}, nil)
-	c.SetGoogleAIModels([]string{"m1"}) // 1개 조합
+	c.SetGoogleAIModels([]string{"m1"}) // single combo
 
 	now := time.Unix(1_000_000, 0)
 	c.cooldownUntil[0] = now.Add(30 * time.Second)
@@ -86,7 +86,7 @@ func TestPickAvailableComboAllCooldown(t *testing.T) {
 		t.Errorf("expected ok=false when all combos in cooldown")
 	}
 
-	// 쿨다운 만료 후에는 다시 사용 가능
+	// available again after cooldown expires
 	later := now.Add(31 * time.Second)
 	if _, _, ok := c.pickAvailableCombo(later); !ok {
 		t.Errorf("expected ok=true after cooldown expired")
@@ -160,7 +160,7 @@ func TestWithFailoverRetriesOnQuota(t *testing.T) {
 		if calls < 3 {
 			return quotaErrForTest()
 		}
-		return nil // 3번째 성공
+		return nil // succeeds on the 3rd attempt
 	})
 	if err != nil {
 		t.Fatalf("expected success, got %v", err)
@@ -171,7 +171,7 @@ func TestWithFailoverRetriesOnQuota(t *testing.T) {
 	if usedModel != "m1" {
 		t.Errorf("usedModel = %q", usedModel)
 	}
-	// 앞의 2개 조합은 쿨다운 마킹되어 있어야 함
+	// the first 2 combos should be marked as cooling down
 	if len(c.cooldownUntil) != 2 {
 		t.Errorf("expected 2 cooled-down combos, got %d", len(c.cooldownUntil))
 	}
