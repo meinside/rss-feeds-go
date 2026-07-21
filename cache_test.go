@@ -14,11 +14,11 @@ func TestNewCachedItem(t *testing.T) {
 
 	t.Run("full item", func(t *testing.T) {
 		item := gofeed.Item{
-			GUID:        "guid-123",
-			Title:       "Original Title",
-			Description: "Original Description",
-			Links:       []string{"https://example.com/article", "https://example.com/comments"},
-			Author:      &gofeed.Person{Name: "Author Name", Email: "author@example.com"},
+			GUID:            "guid-123",
+			Title:           "Original Title",
+			Description:     "Original Description",
+			Links:           []string{"https://example.com/article", "https://example.com/comments"},
+			Author:          &gofeed.Person{Name: "Author Name", Email: "author@example.com"},
 			PublishedParsed: &now,
 		}
 
@@ -369,4 +369,76 @@ func TestDBCache(t *testing.T) {
 			t.Errorf("expected items to remain (recently created), got %d", len(items))
 		}
 	})
+}
+
+// test that newDBCache creates a DB with INCREMENTAL auto_vacuum
+func TestDBCacheAutoVacuumMode(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "autovacuum.db")
+	cache, err := newDBCache(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create dbCache: %s", err)
+	}
+
+	var mode int
+	if err := cache.db.Raw("PRAGMA auto_vacuum").Scan(&mode).Error; err != nil {
+		t.Fatalf("failed to read auto_vacuum pragma: %s", err)
+	}
+	if mode != 2 { // 2 == INCREMENTAL
+		t.Errorf("expected auto_vacuum mode 2 (INCREMENTAL), got %d", mode)
+	}
+}
+
+// test that DeleteOlderThan1Month physically deletes old rows
+func TestDeleteOlderThan1MonthPhysical(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "purge.db")
+	cache, err := newDBCache(dbPath)
+	if err != nil {
+		t.Fatalf("failed to create dbCache: %s", err)
+	}
+
+	// save an old item (35 days ago) and a recent item (now)
+	oldItem := testFeedItem("old-guid", "Old Title")
+	if err := cache.Save(oldItem, "Old", "Old summary"); err != nil {
+		t.Fatalf("Save old failed: %s", err)
+	}
+	newItem := testFeedItem("new-guid", "New Title")
+	if err := cache.Save(newItem, "New", "New summary"); err != nil {
+		t.Fatalf("Save new failed: %s", err)
+	}
+
+	// backdate old-guid's created_at to 35 days ago
+	past := time.Now().Add(-35 * 24 * time.Hour)
+	if err := cache.db.Unscoped().Model(&CachedItem{}).
+		Where("guid = ?", "old-guid").
+		Update("created_at", past).Error; err != nil {
+		t.Fatalf("failed to backdate old item: %s", err)
+	}
+
+	// run the deletion
+	if err := cache.DeleteOlderThan1Month(); err != nil {
+		t.Fatalf("DeleteOlderThan1Month failed: %s", err)
+	}
+
+	// verify physical delete: old-guid must be gone even when counted via Unscoped
+	var total int64
+	if err := cache.db.Unscoped().Model(&CachedItem{}).Count(&total).Error; err != nil {
+		t.Fatalf("count failed: %s", err)
+	}
+	if total != 1 {
+		t.Errorf("expected 1 row remaining (physical delete), got %d", total)
+	}
+
+	// recent item is preserved
+	if !cache.Exists("new-guid") {
+		t.Error("expected recent item to be preserved")
+	}
+	// old item is not reachable even via Unscoped
+	var oldCount int64
+	if err := cache.db.Unscoped().Model(&CachedItem{}).
+		Where("guid = ?", "old-guid").Count(&oldCount).Error; err != nil {
+		t.Fatalf("count old failed: %s", err)
+	}
+	if oldCount != 0 {
+		t.Errorf("expected old item physically deleted, but %d found via Unscoped", oldCount)
+	}
 }
