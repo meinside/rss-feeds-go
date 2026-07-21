@@ -109,17 +109,24 @@ func (c *dbCache) List(includeItemsMarkedAsRead bool) (items []CachedItem) {
 	return items
 }
 
-// DeleteOlderThan1Month deletes cached items which are older than 1 month.
+// DeleteOlderThan1Month physically deletes cached items which are older than
+// 1 month, then reclaims freed pages via incremental_vacuum.
 func (c *dbCache) DeleteOlderThan1Month() error {
 	v(c.verbose, "dbCache - deleting cached items older than 1 month")
 
-	result := c.db.Where("created_at < ?", time.Now().Add(-30*24*time.Hour)).Delete(&CachedItem{})
+	cutoff := time.Now().Add(-30 * 24 * time.Hour)
+	result := c.db.Unscoped().Where("created_at < ?", cutoff).Delete(&CachedItem{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete cached items older than 1 month: %w", result.Error)
 	}
 
 	if result.RowsAffected > 0 {
 		v(c.verbose, "dbCache - deleted %d cached items", result.RowsAffected)
+
+		// reclaim freed pages (non-fatal on failure; retried on next delete)
+		if err := c.db.Exec("PRAGMA incremental_vacuum").Error; err != nil {
+			v(c.verbose, "dbCache - incremental_vacuum failed: %s", err)
+		}
 	}
 
 	return nil
@@ -144,6 +151,14 @@ func newDBCache(filepath string) (cache *dbCache, err error) {
 			},
 		),
 	}); err == nil {
+		// enable incremental auto_vacuum before any table is created,
+		// so that a newly created DB file reclaims freed pages on
+		// `PRAGMA incremental_vacuum`. (existing files must be converted
+		// once manually with `PRAGMA auto_vacuum=INCREMENTAL; VACUUM;`)
+		if err := db.Exec("PRAGMA auto_vacuum = INCREMENTAL").Error; err != nil {
+			return nil, fmt.Errorf("failed to set auto_vacuum: %w", err)
+		}
+
 		// migrate the schema
 		if err := db.AutoMigrate(&CachedItem{}); err != nil {
 			return nil, fmt.Errorf("failed to migrate db: %w", err)
