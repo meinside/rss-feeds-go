@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	defaultGoogleAIModel = "gemini-3-flash-preview"
+	defaultGoogleAIModel = "gemini-3.6-flash"
 
 	systemInstructionFormatForSummary = `You are a precise and useful agent for summarizing and translating contents retrieved from web sites or RSS/Atom feeds.
 
@@ -406,7 +406,8 @@ func genOptions() *genai.GenerateContentConfig {
 
 // generate a system instruction with given configuration
 func systemInstructionForTranslationAndSummary() string {
-	return fmt.Sprintf(systemInstructionFormatForSummary,
+	return fmt.Sprintf(
+		systemInstructionFormatForSummary,
 		time.Now().Format("2006-01-02 15:04:05 (Mon) MST"),
 	)
 }
