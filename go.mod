@@ -5,11 +5,11 @@ go 1.26.0
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.5.47
+	github.com/meinside/gemini-things-go v0.5.48
 	github.com/meinside/simple-scrapper-go v0.0.18
 	github.com/mmcdole/gofeed v1.4.0
-	github.com/tailscale/hujson v0.0.0-20260722022634-78b5b162ee49
-	github.com/yuin/goldmark v1.8.4
+	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
+	github.com/yuin/goldmark v1.8.5
 	google.golang.org/genai v1.65.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
@@ -52,7 +52,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.48 // indirect
 	github.com/meinside/randomized-string-generator-go v0.0.1 // indirect
 	github.com/mmcdole/goxpp/v2 v2.0.0 // indirect
-	github.com/modelcontextprotocol/go-sdk v1.6.1 // indirect
+	github.com/modelcontextprotocol/go-sdk v1.7.0 // indirect
 	github.com/mxschmitt/playwright-go v0.6100.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
@@ -76,10 +76,10 @@ require (
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	google.golang.org/api v0.290.0 // indirect
-	google.golang.org/genproto v0.0.0-20260724162435-b2f20204f0df // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260724162435-b2f20204f0df // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260724162435-b2f20204f0df // indirect
+	google.golang.org/api v0.291.0 // indirect
+	google.golang.org/genproto v0.0.0-20260727163830-6c54dddc4772 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260727163830-6c54dddc4772 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260727163830-6c54dddc4772 // indirect
 	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
