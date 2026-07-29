@@ -11,7 +11,7 @@ import (
 const (
 	googleAIAPIKey = "abcdefghijklmnopqrstuvwxyz0123456789" // NOTE: change it to yours
 
-	googleAIModel   = "gemini-2.5-flash"
+	googleAIModel   = "gemini-3.6-flash"
 	dbFilepath      = "./test.db"
 	desiredLanguage = "Korean"
 	// verbose         = false
@@ -62,7 +62,8 @@ func main() {
 					item.Summary = noSummary
 				}
 
-				log.Printf(`
+				log.Printf(
+					`
 >>> Title: %[1]s
 >>> Date: %[2]s
 

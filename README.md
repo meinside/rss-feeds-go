@@ -53,7 +53,7 @@ func main() {
   }
 
   // (optional) configure client
-  client.SetGoogleAIModels([]string{"gemini-2.5-flash"})
+  client.SetGoogleAIModels([]string{"gemini-3.6-flash"})
   client.SetDesiredLanguage("Korean")
   client.SetVerbose(true)
 
