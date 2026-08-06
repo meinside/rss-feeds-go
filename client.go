@@ -343,10 +343,7 @@ func (c *Client) summarize(
 
 		v(c.verbose, "summarizing youtube url: %s", url)
 
-		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSecondsForYoutube*time.Second)
-		defer cancelGenerate()
-
-		usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctxGenerate, title, url)
+		usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarizeYouTube(ctx, title, url)
 		if err == nil {
 			return usedModel, translatedTitle, summarizedContent, nil
 		}
@@ -357,14 +354,11 @@ func (c *Client) summarize(
 
 	v(c.verbose, "summarizing content of url: %s", url)
 
-	ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
-	defer cancelGenerate()
-
 	// try fetching the content
 	fetched, contentType, fetchErr := c.fetch(ctx, maxRetryCount, url, urlScrapper...)
 	if fetchErr != nil {
 		// fallback: summarize via Gemini URL context
-		usedModel, translatedTitle, summarizedContent, err = c.summarizeURL(ctxGenerate, title, url, c.desiredLanguage)
+		usedModel, translatedTitle, summarizedContent, err = c.summarizeURL(ctx, title, url, c.desiredLanguage)
 		if err == nil {
 			if len(summarizedContent) <= 0 {
 				summarizedContent = summarizedContentEmpty
@@ -380,10 +374,10 @@ func (c *Client) summarize(
 	switch {
 	case isTextFormattableContent(contentType):
 		prompt := fmt.Sprintf(summarizeContentPromptFormat, c.desiredLanguage, title, string(fetched))
-		usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt)
+		usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctx, prompt)
 	case isFileContent(contentType):
 		prompt := fmt.Sprintf(summarizeContentFilePromptFormat, c.desiredLanguage, title)
-		usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctxGenerate, prompt, fetched)
+		usedModel, translatedTitle, summarizedContent, err = c.translateAndSummarize(ctx, prompt, fetched)
 	default:
 		err = fmt.Errorf("not a summarizable content type: %s", contentType)
 	}

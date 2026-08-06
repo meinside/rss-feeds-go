@@ -88,7 +88,7 @@ func (c *Client) withFailover(
 	run func(gtc *gt.Client, model string) error,
 ) (usedModel string, err error) {
 	attempts := len(c.combos)
-	for i := 0; i < attempts; i++ {
+	for range attempts {
 		combo, idx, ok := c.pickAvailableCombo(now())
 		if !ok {
 			return usedModel, ErrNoAvailableAPIKey
@@ -150,14 +150,10 @@ func (c *Client) translateAndSummarize(
 			return fmt.Errorf("failed to convert prompts/files to contents: %w", cerr)
 		}
 
-		// set function call
-		options := genOptions()
+		// generate options with tools
+		options := genOptionsWithTools(generationTimeoutSeconds*time.Second, maxRetryCount)
 
-		// context with timeout (generation)
-		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, time.Duration(generationTimeoutSeconds)*time.Second)
-		defer cancelGenerate()
-
-		result, gerr := gtc.Generate(ctxGenerate, contents, options)
+		result, gerr := gtc.Generate(ctx, contents, options)
 		if gerr != nil {
 			return gerr
 		}
@@ -224,20 +220,10 @@ func (c *Client) summarizeURL(
 			return fmt.Errorf("failed to convert prompts/files to contents: %w", cerr)
 		}
 
-		// use url context
-		options := &genai.GenerateContentConfig{
-			Tools: []*genai.Tool{
-				{
-					URLContext: &genai.URLContext{},
-				},
-			},
-		}
+		// generate options with url context
+		options := genOptionsWithURLContext(generationTimeoutSeconds*time.Second, maxRetryCount)
 
-		// context with timeout (generation)
-		ctxGenerate, cancelGenerate := context.WithTimeout(ctx, generationTimeoutSeconds*time.Second)
-		defer cancelGenerate()
-
-		result, gerr := gtc.Generate(ctxGenerate, contents, options)
+		result, gerr := gtc.Generate(ctx, contents, options)
 		if gerr != nil {
 			return gerr
 		}
@@ -289,8 +275,8 @@ func (c *Client) translateAndSummarizeYouTube(
 			return fmt.Errorf("failed to convert prompts/files to contents: %w", cerr)
 		}
 
-		// set function call
-		options := genOptions()
+		// generate options with tools
+		options := genOptionsWithTools(generationTimeoutSecondsForYoutube*time.Second, maxRetryCount)
 
 		result, gerr := gtc.Generate(ctx, contents, options)
 		if gerr != nil {
@@ -361,9 +347,38 @@ const (
 	fnParamDescSummarizedContent            = `Summarized content.`
 )
 
-// options for generation
-func genOptions() *genai.GenerateContentConfig {
+// options for generation (with url context)
+func genOptionsWithURLContext(
+	timeout time.Duration,
+	retryCount int,
+) *genai.GenerateContentConfig {
 	return &genai.GenerateContentConfig{
+		HTTPOptions: &genai.HTTPOptions{
+			Timeout: &timeout,
+			RetryOptions: &genai.HTTPRetryOptions{
+				Attempts: new(int32(retryCount + 1)),
+			},
+		},
+		Tools: []*genai.Tool{
+			{
+				URLContext: &genai.URLContext{},
+			},
+		},
+	}
+}
+
+// options for generation (with tools)
+func genOptionsWithTools(
+	timeout time.Duration,
+	retryCount int,
+) *genai.GenerateContentConfig {
+	return &genai.GenerateContentConfig{
+		HTTPOptions: &genai.HTTPOptions{
+			Timeout: &timeout,
+			RetryOptions: &genai.HTTPRetryOptions{
+				Attempts: new(int32(retryCount + 1)),
+			},
+		},
 		Tools: []*genai.Tool{
 			{
 				FunctionDeclarations: []*genai.FunctionDeclaration{
