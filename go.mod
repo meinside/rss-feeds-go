@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
 	github.com/gorilla/feeds v1.2.0
-	github.com/meinside/gemini-things-go v0.5.49
+	github.com/meinside/gemini-things-go v0.5.50
 	github.com/meinside/simple-scrapper-go v0.0.18
 	github.com/mmcdole/gofeed v1.4.0
 	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
