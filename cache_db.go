@@ -110,7 +110,8 @@ func (c *dbCache) List(includeItemsMarkedAsRead bool) (items []CachedItem) {
 }
 
 // DeleteOlderThan1Month physically deletes cached items which are older than
-// 1 month, then reclaims freed pages via incremental_vacuum.
+// 1 month and cooldowns which expired long ago, then reclaims freed pages via
+// incremental_vacuum.
 func (c *dbCache) DeleteOlderThan1Month() error {
 	v(c.verbose, "dbCache - deleting cached items older than 1 month")
 
@@ -119,14 +120,69 @@ func (c *dbCache) DeleteOlderThan1Month() error {
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete cached items older than 1 month: %w", result.Error)
 	}
+	deleted := result.RowsAffected
 
-	if result.RowsAffected > 0 {
-		v(c.verbose, "dbCache - deleted %d cached items", result.RowsAffected)
+	// NOTE: cooldowns this old are ignored on load anyway (see
+	// `restoreCooldownsLocked`), and their combos may not even exist anymore
+	stale := time.Now().Add(-time.Duration(staleCooldownSeconds) * time.Second)
+	cooldowns := c.db.Where("until < ?", stale).Delete(&CachedCooldown{})
+	if cooldowns.Error != nil {
+		return fmt.Errorf("failed to delete stale cooldowns: %w", cooldowns.Error)
+	}
+	if cooldowns.RowsAffected > 0 {
+		v(c.verbose, "dbCache - deleted %d stale cooldown(s)", cooldowns.RowsAffected)
+	}
+	deleted += cooldowns.RowsAffected
+
+	if deleted > 0 {
+		v(c.verbose, "dbCache - deleted %d cached item(s)", result.RowsAffected)
 
 		// reclaim freed pages (non-fatal on failure; retried on next delete)
 		if err := c.db.Exec("PRAGMA incremental_vacuum").Error; err != nil {
 			v(c.verbose, "dbCache - incremental_vacuum failed: %s", err)
 		}
+	}
+
+	return nil
+}
+
+// LoadCooldowns lists all persisted cooldowns.
+func (c *dbCache) LoadCooldowns() (cooldowns []CachedCooldown) {
+	v(c.verbose, "dbCache - loading persisted cooldowns")
+
+	if err := c.db.Find(&cooldowns).Error; err != nil {
+		log.Printf("failed to load persisted cooldowns: %s", err)
+		return nil
+	}
+
+	return cooldowns
+}
+
+// SaveCooldown persists (or updates) given cooldown.
+func (c *dbCache) SaveCooldown(cooldown CachedCooldown) error {
+	v(c.verbose, "dbCache - saving cooldown of model '%s' until: %s", cooldown.Model, cooldown.Until)
+
+	err := c.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "api_key_hash"}, {Name: "model"}},
+		DoUpdates: clause.AssignmentColumns([]string{
+			"until",
+			"failures",
+			"updated_at",
+		}),
+	}).Create(&cooldown).Error
+	if err != nil {
+		return fmt.Errorf("failed to upsert cooldown of model '%s': %w", cooldown.Model, err)
+	}
+
+	return nil
+}
+
+// DeleteCooldown drops the persisted cooldown of given (api key, model).
+func (c *dbCache) DeleteCooldown(apiKeyHash, model string) error {
+	err := c.db.Where("api_key_hash = ? AND model = ?", apiKeyHash, model).
+		Delete(&CachedCooldown{}).Error
+	if err != nil {
+		return fmt.Errorf("failed to delete cooldown of model '%s': %w", model, err)
 	}
 
 	return nil
@@ -160,7 +216,7 @@ func newDBCache(filepath string) (cache *dbCache, err error) {
 		}
 
 		// migrate the schema
-		if err := db.AutoMigrate(&CachedItem{}); err != nil {
+		if err := db.AutoMigrate(&CachedItem{}, &CachedCooldown{}); err != nil {
 			return nil, fmt.Errorf("failed to migrate db: %w", err)
 		}
 

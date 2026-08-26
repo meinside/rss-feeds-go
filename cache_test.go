@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // test `newCachedItem`
@@ -440,5 +442,109 @@ func TestDeleteOlderThan1MonthPhysical(t *testing.T) {
 	}
 	if oldCount != 0 {
 		t.Errorf("expected old item physically deleted, but %d found via Unscoped", oldCount)
+	}
+}
+
+// an existing db file that only has the old schema must gain the cooldown table
+// on open, keeping its cached items
+func TestAutoMigrateOldDB(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "old.db")
+
+	// a db with the old schema only
+	old, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to open db: %s", err)
+	}
+	if err := old.AutoMigrate(&CachedItem{}); err != nil {
+		t.Fatalf("failed to migrate the old schema: %s", err)
+	}
+	if err := old.Create(&CachedItem{GUID: "guid-old", Title: "old", Summary: "summary"}).Error; err != nil {
+		t.Fatalf("failed to insert into the old schema: %s", err)
+	}
+	if old.Migrator().HasTable(&CachedCooldown{}) {
+		t.Fatal("precondition failed: the cooldown table should not exist yet")
+	}
+	if sqlDB, err := old.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+
+	// opening it with the current code must migrate it
+	c, err := newDBCache(dbPath)
+	if err != nil {
+		t.Fatalf("failed to open the old db: %s", err)
+	}
+	if !c.db.Migrator().HasTable(&CachedCooldown{}) {
+		t.Error("the cooldown table was not created")
+	}
+	if !c.Exists("guid-old") {
+		t.Error("an already cached item was lost")
+	}
+
+	// and the migrated table must work, upserting on (api key hash, model)
+	if err := c.SaveCooldown(CachedCooldown{APIKeyHash: "hash", Model: "m1", Until: time.Now().Add(time.Minute), Failures: 2}); err != nil {
+		t.Fatalf("failed to save a cooldown: %s", err)
+	}
+	if err := c.SaveCooldown(CachedCooldown{APIKeyHash: "hash", Model: "m1", Until: time.Now().Add(2 * time.Minute), Failures: 3}); err != nil {
+		t.Fatalf("failed to update a cooldown: %s", err)
+	}
+	loaded := c.LoadCooldowns()
+	if len(loaded) != 1 || loaded[0].Failures != 3 {
+		t.Errorf("LoadCooldowns() = %+v, want 1 row with Failures = 3", loaded)
+	}
+	if err := c.DeleteCooldown("hash", "m1"); err != nil {
+		t.Fatalf("failed to delete a cooldown: %s", err)
+	}
+	if got := c.LoadCooldowns(); len(got) != 0 {
+		t.Errorf("LoadCooldowns() = %+v after delete, want empty", got)
+	}
+
+	// re-opening an already migrated db must not fail
+	if _, err := newDBCache(dbPath); err != nil {
+		t.Fatalf("failed to re-open the migrated db: %s", err)
+	}
+}
+
+// stale cooldowns must be cleaned up along with old cached items, so that rows
+// for rotated api keys or dropped models do not linger forever
+func TestDeleteOlderThan1MonthDeletesStaleCooldowns(t *testing.T) {
+	live := CachedCooldown{APIKeyHash: "live", Model: "m1", Until: time.Now().Add(10 * time.Minute)}
+	// expired, but not long enough ago to be dropped
+	recent := CachedCooldown{APIKeyHash: "recent", Model: "m1", Until: time.Now().Add(-time.Minute)}
+	stale := CachedCooldown{APIKeyHash: "stale", Model: "m-gone", Until: time.Now().Add(-2 * staleCooldownSeconds * time.Second)}
+
+	caches := map[string]FeedsItemsCache{}
+	caches["memCache"] = newMemCache()
+	dbCache, err := newDBCache(filepath.Join(t.TempDir(), "cleanup.db"))
+	if err != nil {
+		t.Fatalf("failed to create db cache: %s", err)
+	}
+	caches["dbCache"] = dbCache
+
+	for name, cache := range caches {
+		t.Run(name, func(t *testing.T) {
+			for _, cooldown := range []CachedCooldown{live, recent, stale} {
+				if err := cache.SaveCooldown(cooldown); err != nil {
+					t.Fatalf("failed to save cooldown %+v: %s", cooldown, err)
+				}
+			}
+
+			if err := cache.DeleteOlderThan1Month(); err != nil {
+				t.Fatalf("DeleteOlderThan1Month failed: %s", err)
+			}
+
+			kept := map[string]bool{}
+			for _, cooldown := range cache.LoadCooldowns() {
+				kept[cooldown.APIKeyHash] = true
+			}
+			if !kept["live"] {
+				t.Error("a live cooldown was deleted")
+			}
+			if !kept["recent"] {
+				t.Error("a recently expired cooldown was deleted too early")
+			}
+			if kept["stale"] {
+				t.Error("a stale cooldown was not deleted")
+			}
+		})
 	}
 }
