@@ -2,6 +2,7 @@ package rf
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mmcdole/gofeed"
 )
 
 // helper for creating a client with API key from env
@@ -211,7 +214,7 @@ func TestPickAvailableComboCoversAllPairs(t *testing.T) {
 
 	seen := map[keyModelCombo]bool{}
 	for i := 0; i < 6; i++ {
-		combo, _, ok := client.pickAvailableCombo(now)
+		combo, _, ok := client.pickAvailableCombo(now, nil)
 		if !ok {
 			t.Fatalf("expected ok on iteration %d", i)
 		}
@@ -521,5 +524,91 @@ func TestFetchFeedsOldItemsFiltered(t *testing.T) {
 	}
 	if feeds[0].Items[0].GUID != "guid-recent" {
 		t.Errorf("expected 'guid-recent', got %q", feeds[0].Items[0].GUID)
+	}
+}
+
+// a retriable error (here: every combo in cooldown) must abort the run without
+// caching anything, or the remaining items would be served with an error message
+// as their summary forever
+func TestSummarizeAndCacheFeedsSkipsOnRetriableError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		fmt.Fprint(w, `<html><body><p>article body</p></body></html>`)
+	}))
+	defer server.Close()
+
+	client := NewClient([]string{"key-1"}, nil)
+	client.SetGoogleAIModels([]string{"m1"}) // a single combo
+	client.SetSummarizeIntervalSeconds(0)
+
+	// put every combo in cooldown, so that no api call is made at all
+	client.cooldownUntil[0] = time.Now().Add(time.Hour)
+
+	items := []*gofeed.Item{
+		{GUID: "guid-1", Title: "Item 1", Link: server.URL, Links: []string{server.URL}, Description: "desc 1"},
+		{GUID: "guid-2", Title: "Item 2", Link: server.URL, Links: []string{server.URL}, Description: "desc 2"},
+		{GUID: "guid-3", Title: "Item 3", Link: server.URL, Links: []string{server.URL}, Description: "desc 3"},
+	}
+
+	err := client.SummarizeAndCacheFeeds(context.Background(), []gofeed.Feed{{Items: items}})
+	if err == nil {
+		t.Fatal("expected an error when every combo is in cooldown")
+	}
+	if !errors.Is(err, ErrNoAvailableAPIKey) {
+		t.Errorf("expected ErrNoAvailableAPIKey in the chain, got %s", err)
+	}
+
+	// nothing must have been cached: every item stays to be retried later
+	if cached := client.ListCachedItems(true); len(cached) != 0 {
+		for _, item := range cached {
+			t.Logf("unexpectedly cached: %q -> %q", item.Title, item.Summary)
+		}
+		t.Errorf("expected 0 cached items, got %d", len(cached))
+	}
+	for _, item := range items {
+		if client.cache.Exists(item.GUID) {
+			t.Errorf("item %q must not be cached", item.GUID)
+		}
+	}
+}
+
+// an error which is not retriable must keep the old behavior: the item is cached
+// with the error message and the original content, and the run goes on
+func TestSummarizeAndCacheFeedsCachesNonRetriableError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream") // not summarizable
+		fmt.Fprint(w, "binary junk")
+	}))
+	defer server.Close()
+
+	client := NewClient([]string{"key-1"}, nil)
+	client.SetGoogleAIModels([]string{"m1"})
+	client.SetSummarizeIntervalSeconds(0)
+
+	items := []*gofeed.Item{
+		{GUID: "guid-a", Title: "Item A", Link: server.URL, Links: []string{server.URL}, Description: "desc A"},
+		{GUID: "guid-b", Title: "Item B", Link: server.URL, Links: []string{server.URL}, Description: "desc B"},
+	}
+
+	err := client.SummarizeAndCacheFeeds(context.Background(), []gofeed.Feed{{Items: items}})
+	if err == nil {
+		t.Fatal("expected an error for a non-summarizable content type")
+	}
+	if errors.Is(err, ErrNoAvailableAPIKey) {
+		t.Errorf("this must not be a cooldown error: %s", err)
+	}
+
+	// every item must have been cached, with the error and the original content
+	cached := client.ListCachedItems(true)
+	if len(cached) != len(items) {
+		t.Fatalf("expected %d cached items, got %d", len(items), len(cached))
+	}
+	for _, item := range cached {
+		if !isError(item.Summary) {
+			t.Errorf("expected an error summary for %q, got %q", item.Title, item.Summary)
+		}
+		if !strings.Contains(item.Summary, "desc") {
+			t.Errorf("expected the original description to be kept for %q, got %q", item.Title, item.Summary)
+		}
 	}
 }
