@@ -2,6 +2,7 @@ package rf
 
 import (
 	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -17,6 +18,8 @@ import (
 type memCache struct {
 	mu    sync.RWMutex
 	items map[string]CachedItem
+
+	cooldowns map[[2]string]CachedCooldown
 
 	verbose bool
 }
@@ -91,7 +94,8 @@ func (c *memCache) List(includeItemsMarkedAsRead bool) []CachedItem {
 	return all
 }
 
-// DeleteOlderThan1Month deletes cached items which are older than 1 month.
+// DeleteOlderThan1Month deletes cached items which are older than 1 month, and
+// cooldowns which expired long ago.
 func (c *memCache) DeleteOlderThan1Month() error {
 	v(c.verbose, "memCache - deleting cached items older than 1 month")
 
@@ -101,6 +105,44 @@ func (c *memCache) DeleteOlderThan1Month() error {
 	maps.DeleteFunc(c.items, func(_ string, v CachedItem) bool {
 		return v.CreatedAt.Before(time.Now().Add(-30 * 24 * time.Hour))
 	})
+
+	// NOTE: cooldowns this old are ignored on load anyway (see
+	// `restoreCooldownsLocked`), and their combos may not even exist anymore
+	stale := time.Now().Add(-time.Duration(staleCooldownSeconds) * time.Second)
+	maps.DeleteFunc(c.cooldowns, func(_ [2]string, v CachedCooldown) bool {
+		return v.Until.Before(stale)
+	})
+
+	return nil
+}
+
+// LoadCooldowns lists all cooldowns in the cache.
+func (c *memCache) LoadCooldowns() []CachedCooldown {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	return slices.Collect(maps.Values(c.cooldowns))
+}
+
+// SaveCooldown saves given cooldown to the cache.
+func (c *memCache) SaveCooldown(cooldown CachedCooldown) error {
+	v(c.verbose, "memCache - saving cooldown of model '%s' until: %s", cooldown.Model, cooldown.Until)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	cooldown.UpdatedAt = time.Now()
+	c.cooldowns[[2]string{cooldown.APIKeyHash, cooldown.Model}] = cooldown
+
+	return nil
+}
+
+// DeleteCooldown deletes the cooldown of given (api key, model) from the cache.
+func (c *memCache) DeleteCooldown(apiKeyHash, model string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	delete(c.cooldowns, [2]string{apiKeyHash, model})
 
 	return nil
 }
@@ -113,6 +155,7 @@ func (c *memCache) SetVerbose(v bool) {
 // return a new memory cache
 func newMemCache() *memCache {
 	return &memCache{
-		items: map[string]CachedItem{},
+		items:     map[string]CachedItem{},
+		cooldowns: map[[2]string]CachedCooldown{},
 	}
 }

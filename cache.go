@@ -23,7 +23,28 @@ type FeedsItemsCache interface {
 	List(includeItemsMarkedAsRead bool) []CachedItem
 	DeleteOlderThan1Month() error
 
+	// LoadCooldowns lists all persisted (api key, model) cooldowns.
+	LoadCooldowns() []CachedCooldown
+	// SaveCooldown persists (or updates) the cooldown of one (api key, model).
+	SaveCooldown(cooldown CachedCooldown) error
+	// DeleteCooldown drops the persisted cooldown of one (api key, model).
+	DeleteCooldown(apiKeyHash, model string) error
+
 	SetVerbose(v bool)
+}
+
+// CachedCooldown is a persisted quota cooldown of a single (api key, model)
+// combination, so that a restarted process does not immediately hit the same
+// exhausted quota again.
+//
+// NOTE: the api key itself is never stored, only `hashAPIKey` of it.
+type CachedCooldown struct {
+	APIKeyHash string `gorm:"primaryKey"`
+	Model      string `gorm:"primaryKey"`
+
+	Until     time.Time // when the combo becomes usable again
+	Failures  int       // consecutive quota errors of the combo, for escalation
+	UpdatedAt time.Time
 }
 
 // CachedItem is a struct for a cached item

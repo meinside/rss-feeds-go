@@ -58,11 +58,53 @@ referring to the summarized content:
 )
 
 // markCooldown records a cooldown expiry for the given combo index based on
-// the quota error's RetryInfo (falling back to the default).
+// the quota error's RetryInfo (falling back to the default), escalated by the
+// number of consecutive quota errors of that combo, and persists it to the
+// cache so that it survives a restart.
 func (c *Client) markCooldown(idx int, err error, now time.Time) {
 	c.cooldownMu.Lock()
 	defer c.cooldownMu.Unlock()
-	c.cooldownUntil[idx] = now.Add(cooldownDuration(err))
+
+	c.cooldownFailures[idx]++
+	failures := c.cooldownFailures[idx]
+	until := now.Add(cooldownDuration(err, failures, now))
+	c.cooldownUntil[idx] = until
+
+	if c.cache == nil || idx >= len(c.combos) {
+		return
+	}
+	combo := c.combos[idx]
+	if serr := c.cache.SaveCooldown(CachedCooldown{
+		APIKeyHash: combo.apiKeyHash,
+		Model:      combo.model,
+		Until:      until,
+		Failures:   failures,
+	}); serr != nil {
+		log.Printf("failed to persist cooldown of model '%s': %s", combo.model, serr)
+	}
+}
+
+// clearCooldown drops the cooldown and the consecutive failure count of the
+// given combo index, after it has been used successfully.
+func (c *Client) clearCooldown(idx int) {
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+
+	_, hadFailures := c.cooldownFailures[idx]
+	_, hadCooldown := c.cooldownUntil[idx]
+	delete(c.cooldownFailures, idx)
+	delete(c.cooldownUntil, idx)
+
+	if !hadFailures && !hadCooldown {
+		return
+	}
+	if c.cache == nil || idx >= len(c.combos) {
+		return
+	}
+	combo := c.combos[idx]
+	if derr := c.cache.DeleteCooldown(combo.apiKeyHash, combo.model); derr != nil {
+		log.Printf("failed to delete persisted cooldown of model '%s': %s", combo.model, derr)
+	}
 }
 
 // newGeminiClientForCombo builds a gemini-things client for a specific combo
@@ -79,19 +121,30 @@ func (c *Client) newGeminiClientForCombo(combo keyModelCombo) (gtc *gt.Client, e
 	return gtc, nil
 }
 
-// withFailover picks an available combo, runs `run`, and on a quota (429)
-// error marks that combo's cooldown and retries with the next available
-// combo. Non-429 errors are returned immediately. Returns ErrNoAvailableAPIKey
-// if every combo is exhausted or in cooldown.
+// withFailover picks an available combo, runs `run`, and retries with the next
+// available combo when the error is retriable with another combo:
+//   - on a quota (429) error, that combo's cooldown is marked and any other
+//     available combo may be tried
+//   - on an overloaded model (503), only combos with a *different* model are
+//     tried, as another api key for the same model would hit the same
+//     overloaded model. The 503 is returned when no other model is left.
+//
+// Other errors are returned immediately. When no combo is left, it returns
+// ErrNoAvailableAPIKey wrapping the last quota error (so that the exhausted
+// quota and its retry delay stay visible in logs).
 func (c *Client) withFailover(
 	now func() time.Time,
 	run func(gtc *gt.Client, model string) error,
 ) (usedModel string, err error) {
+	overloadedModels := map[string]bool{}
+	var overloadErr error // the last 503, if any
+	var quotaErr error    // the last 429, if any
+
 	attempts := len(c.combos)
 	for range attempts {
-		combo, idx, ok := c.pickAvailableCombo(now())
+		combo, idx, ok := c.pickAvailableCombo(now(), overloadedModels)
 		if !ok {
-			return usedModel, ErrNoAvailableAPIKey
+			break
 		}
 		usedModel = combo.model
 
@@ -104,13 +157,36 @@ func (c *Client) withFailover(
 		closeGeminiClient(gtc)
 
 		if runErr == nil {
+			c.clearCooldown(idx)
 			return usedModel, nil
 		}
-		if gt.IsQuotaExceeded(runErr) {
+		if isQuotaError(runErr) {
 			c.markCooldown(idx, runErr, now())
+			quotaErr = runErr
+			continue
+		}
+		if gt.IsModelOverloaded(runErr) {
+			// NOTE: not a cooldown; the model is skipped for this call only
+			overloadedModels[combo.model] = true
+			overloadErr = runErr
 			continue
 		}
 		return usedModel, runErr
+	}
+
+	// NOTE: wrap the errors which caused the failover, or callers would only see
+	// `ErrNoAvailableAPIKey` and no hint of which quota ran out until when.
+	//
+	// NOTE: only one `genai.APIError` can be found by `errors.As` in a chain, so
+	// the quota error (the actionable one) is the wrapped one, and a 503 is only
+	// appended as text.
+	switch {
+	case quotaErr != nil && overloadErr != nil:
+		return usedModel, fmt.Errorf("%w: %w (also: %s)", ErrNoAvailableAPIKey, quotaErr, gt.ErrToStr(overloadErr))
+	case quotaErr != nil:
+		return usedModel, fmt.Errorf("%w: %w", ErrNoAvailableAPIKey, quotaErr)
+	case overloadErr != nil:
+		return usedModel, overloadErr
 	}
 	return usedModel, ErrNoAvailableAPIKey
 }
