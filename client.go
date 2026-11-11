@@ -196,6 +196,16 @@ func (c *Client) SetExaoneModels(models []string) {
 	c.buildCombos()
 }
 
+// SetExaoneHTTPClient sets the http client for EXAONE API requests
+// (`http.DefaultClient` when nil).
+//
+// Its transport may rewrite requests, eg. replace the 'Authorization' header
+// with a renewed api key: then the keys given to `SetExaoneAPIKeys` can be
+// placeholders, which only tell the combos apart.
+func (c *Client) SetExaoneHTTPClient(client *http.Client) {
+	c.exaone.httpClient = client
+}
+
 // buildCombos rebuilds the (key, model) combination list and restores the
 // cooldowns persisted in the cache (dropping the ones which no longer match a
 // combination, or which expired long ago).
