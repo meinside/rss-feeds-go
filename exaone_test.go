@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -446,6 +447,211 @@ func TestSummarizeAndCacheFeedsCachesUnsupportedContentWithExaoneOnly(t *testing
 	}
 	if !isError(cached.Summary) || !strings.Contains(cached.Summary, "desc pdf") {
 		t.Errorf("expected the error and the original content, got %q", cached.Summary)
+	}
+}
+
+// newMixedTestClient returns a client with a Gemini combo (index 0) and an
+// EXAONE combo (index 1) which requests given handler, and an item server
+// which serves '/pdf' as a PDF and others as HTML, counting requests per path.
+func newMixedTestClient(t *testing.T, exaoneHandler http.HandlerFunc) (c *Client, itemURL func(path string) string, itemRequests func(path string) int) {
+	t.Helper()
+
+	var mu sync.Mutex
+	requested := map[string]int{}
+	itemServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		requested[r.URL.Path]++
+		mu.Unlock()
+
+		if r.URL.Path == "/pdf" {
+			w.Header().Set("Content-Type", "application/pdf")
+			_, _ = w.Write([]byte("%PDF-1.7"))
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<html><body><p>article body</p></body></html>`))
+	}))
+	t.Cleanup(itemServer.Close)
+
+	exaoneServer := httptest.NewServer(exaoneHandler)
+	t.Cleanup(exaoneServer.Close)
+
+	c = NewClient([]string{"gemini-key"}, nil)
+	c.SetGoogleAIModels([]string{"gemini-m1"})
+	c.SetExaoneAPIKeys([]string{"exaone-key"})
+	c.exaone.baseURL = exaoneServer.URL + "/v1"
+	c.exaone.requestInterval = 0
+	c.SetSummarizeIntervalSeconds(0)
+
+	return c,
+		func(path string) string { return itemServer.URL + path },
+		func(path string) int {
+			mu.Lock()
+			defer mu.Unlock()
+			return requested[path]
+		}
+}
+
+// testItem returns a feed item with given guid and link.
+func testItem(guid, link string) *gofeed.Item {
+	return &gofeed.Item{GUID: guid, Title: "title of " + guid, Link: link, Links: []string{link}, Description: "desc of " + guid}
+}
+
+// with Gemini in a long cooldown (eg. its daily quota exhausted), a
+// Gemini-only item must be cached as failed (with the time of recovery), and
+// the text items after it summarized with EXAONE
+func TestSummarizeAndCacheFeedsFailsGeminiOnlyItemInLongCooldown(t *testing.T) {
+	var calls atomic.Int32
+	c, itemURL, _ := newMixedTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeExaoneResponse(w, http.StatusOK, exaoneToolCallResponse)
+	})
+	c.cooldownUntil[0] = time.Now().Add(3 * time.Hour)
+
+	err := c.SummarizeAndCacheFeeds(context.Background(), []gofeed.Feed{{Items: []*gofeed.Item{
+		testItem("guid-pdf", itemURL("/pdf")),
+		testItem("guid-html", itemURL("/html")),
+	}}})
+	if !errors.Is(err, ErrNoAvailableAPIKey) {
+		t.Errorf("expected ErrNoAvailableAPIKey of the failed item in the chain, got %v", err)
+	}
+
+	pdf := c.cache.Fetch("guid-pdf")
+	if pdf == nil {
+		t.Fatal("the gemini-only item must be cached as failed")
+	}
+	if !isError(pdf.Summary) || !strings.Contains(pdf.Summary, "until") || !strings.Contains(pdf.Summary, "desc of guid-pdf") {
+		t.Errorf("expected the error with the time of recovery, and the original content, got %q", pdf.Summary)
+	}
+
+	html := c.cache.Fetch("guid-html")
+	if html == nil || isError(html.Summary) {
+		t.Fatalf("the text item must be summarized with exaone, got %+v", html)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("expected 1 exaone request, got %d", got)
+	}
+}
+
+// with every combo in a long cooldown, items must be cached as failed without
+// fetching their contents, nor requesting any api
+func TestSummarizeAndCacheFeedsFailsWithoutFetchingInLongCooldown(t *testing.T) {
+	c, itemURL, itemRequests := newMixedTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("no exaone request is expected")
+	})
+	c.cooldownUntil[0] = time.Now().Add(3 * time.Hour)
+	c.cooldownUntil[1] = time.Now().Add(2 * time.Hour)
+
+	err := c.SummarizeAndCacheFeeds(context.Background(), []gofeed.Feed{{Items: []*gofeed.Item{
+		testItem("guid-1", itemURL("/1")),
+		testItem("guid-2", itemURL("/2")),
+	}}})
+	if !errors.Is(err, ErrNoAvailableAPIKey) {
+		t.Errorf("expected ErrNoAvailableAPIKey in the chain, got %v", err)
+	}
+
+	for _, guid := range []string{"guid-1", "guid-2"} {
+		cached := c.cache.Fetch(guid)
+		if cached == nil {
+			t.Fatalf("item %q must be cached as failed", guid)
+		}
+		if !isError(cached.Summary) || !strings.Contains(cached.Summary, "until") || !strings.Contains(cached.Summary, "desc of "+guid) {
+			t.Errorf("expected the error with the time of recovery, and the original content, got %q", cached.Summary)
+		}
+	}
+	for _, path := range []string{"/1", "/2"} {
+		if got := itemRequests(path); got != 0 {
+			t.Errorf("%s must not be fetched, but was requested %d time(s)", path, got)
+		}
+	}
+}
+
+// when EXAONE starts answering 429 with a long retry-after while Gemini is in a
+// long cooldown, the item must be cached as failed, and the items after it
+// without being fetched
+func TestSummarizeAndCacheFeedsFailsOnLongRateLimit(t *testing.T) {
+	var calls atomic.Int32
+	c, itemURL, itemRequests := newMixedTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeExaoneResponse(w, http.StatusTooManyRequests, `{"error":{"message":"daily limit exceeded","type":"rate_limit_error","param":null,"code":"rate_limit_exceeded"}}`, "Retry-After", "7200")
+	})
+	c.cooldownUntil[0] = time.Now().Add(3 * time.Hour)
+
+	err := c.SummarizeAndCacheFeeds(context.Background(), []gofeed.Feed{{Items: []*gofeed.Item{
+		testItem("guid-1", itemURL("/1")),
+		testItem("guid-2", itemURL("/2")),
+	}}})
+	if !errors.Is(err, ErrNoAvailableAPIKey) {
+		t.Errorf("expected ErrNoAvailableAPIKey in the chain, got %v", err)
+	}
+
+	for _, guid := range []string{"guid-1", "guid-2"} {
+		if cached := c.cache.Fetch(guid); cached == nil || !isError(cached.Summary) || !strings.Contains(cached.Summary, "until") {
+			t.Errorf("item %q must be cached as failed with the time of recovery, got %+v", guid, cached)
+		}
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("expected 1 exaone request, got %d", got)
+	}
+	if got := itemRequests("/2"); got != 0 {
+		t.Errorf("the item after the long 429 must not be fetched, but was requested %d time(s)", got)
+	}
+}
+
+// with Gemini in a short cooldown, a Gemini-only item must be skipped (not
+// cached, for retrying later) without blocking the text items after it, which
+// EXAONE can summarize
+func TestSummarizeAndCacheFeedsSkipsGeminiOnlyItemInCooldown(t *testing.T) {
+	pdfServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pdf")
+		_, _ = w.Write([]byte("%PDF-1.7"))
+	}))
+	defer pdfServer.Close()
+	htmlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<html><body><p>article body</p></body></html>`))
+	}))
+	defer htmlServer.Close()
+
+	var calls atomic.Int32
+	exaoneServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		writeExaoneResponse(w, http.StatusOK, exaoneToolCallResponse)
+	}))
+	defer exaoneServer.Close()
+
+	c := NewClient([]string{"gemini-key"}, nil)
+	c.SetGoogleAIModels([]string{"gemini-m1"})
+	c.SetExaoneAPIKeys([]string{"exaone-key"})
+	c.exaone.baseURL = exaoneServer.URL + "/v1"
+	c.exaone.requestInterval = 0
+	c.SetSummarizeIntervalSeconds(0)
+
+	// the gemini combo (built first) is in a short cooldown, so that no gemini api call is made
+	c.cooldownUntil[0] = time.Now().Add(10 * time.Minute)
+
+	items := []*gofeed.Item{
+		{GUID: "guid-pdf", Title: "A PDF", Link: pdfServer.URL, Links: []string{pdfServer.URL}, Description: "desc pdf"},
+		{GUID: "guid-html", Title: "An HTML", Link: htmlServer.URL, Links: []string{htmlServer.URL}, Description: "desc html"},
+	}
+
+	err := c.SummarizeAndCacheFeeds(context.Background(), []gofeed.Feed{{Items: items}})
+	if !errors.Is(err, ErrNoAvailableAPIKey) {
+		t.Errorf("expected ErrNoAvailableAPIKey of the skipped item in the chain, got %v", err)
+	}
+
+	if c.cache.Exists("guid-pdf") {
+		t.Error("the gemini-only item must not be cached, for retrying later")
+	}
+	cached := c.cache.Fetch("guid-html")
+	if cached == nil {
+		t.Fatal("the text item after the skipped one must be summarized and cached")
+	}
+	if isError(cached.Summary) {
+		t.Errorf("expected a successful summary, got %q", cached.Summary)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("expected 1 exaone request, got %d", got)
 	}
 }
 

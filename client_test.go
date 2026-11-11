@@ -526,9 +526,9 @@ func TestFetchFeedsOldItemsFiltered(t *testing.T) {
 	}
 }
 
-// a retriable error (here: every combo in cooldown) must abort the run without
-// caching anything, or the remaining items would be served with an error message
-// as their summary forever
+// a retriable error (here: every combo in a short cooldown) must abort the run
+// without caching anything, or the remaining items would be served with an error
+// message as their summary forever
 func TestSummarizeAndCacheFeedsSkipsOnRetriableError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -540,8 +540,8 @@ func TestSummarizeAndCacheFeedsSkipsOnRetriableError(t *testing.T) {
 	client.SetGoogleAIModels([]string{"m1"}) // a single combo
 	client.SetSummarizeIntervalSeconds(0)
 
-	// put every combo in cooldown, so that no api call is made at all
-	client.cooldownUntil[0] = time.Now().Add(time.Hour)
+	// put every combo in a (short) cooldown, so that no api call is made at all
+	client.cooldownUntil[0] = time.Now().Add(10 * time.Minute)
 
 	items := []*gofeed.Item{
 		{GUID: "guid-1", Title: "Item 1", Link: server.URL, Links: []string{server.URL}, Description: "desc 1"},
