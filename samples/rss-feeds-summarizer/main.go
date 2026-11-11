@@ -10,6 +10,7 @@ import (
 
 const (
 	googleAIAPIKey = "abcdefghijklmnopqrstuvwxyz0123456789" // NOTE: change it to yours
+	exaoneAPIKey   = ""                                     // NOTE: (optional) set yours for summarizing text contents with EXAONE too
 
 	googleAIModel   = "gemini-3.6-flash"
 	dbFilepath      = "./test.db"
@@ -36,6 +37,9 @@ func main() {
 		dbFilepath,
 	); err == nil {
 		client.SetGoogleAIModels([]string{googleAIModel})
+		if exaoneAPIKey != "" {
+			client.SetExaoneAPIKeys([]string{exaoneAPIKey})
+		}
 		client.SetDesiredLanguage(desiredLanguage)
 		client.SetVerbose(verbose)
 

@@ -69,6 +69,14 @@ type Client struct {
 	googleAIAPIKeys []string
 	googleAIModels  []string
 
+	exaoneAPIKeys []string
+	exaoneModels  []string
+	exaone        exaoneSettings
+	// exaoneNextRequestAt is the earliest time of the next EXAONE request per
+	// api key hash, for keeping `exaone.requestInterval` between requests.
+	exaoneNextRequestAt map[string]time.Time
+	exaoneMu            sync.Mutex
+
 	desiredLanguage          string
 	summarizeIntervalSeconds int
 	verbose                  bool
@@ -83,14 +91,36 @@ type Client struct {
 	_numRequests atomic.Int64
 }
 
+// provider is the API which serves a (api key, model) combo.
+type provider string
+
+const (
+	providerGemini provider = "gemini"
+	providerExaone provider = "exaone"
+)
+
+// task is a kind of generation, which not every provider can do.
+type task string
+
+const (
+	taskText       task = "text"        // text prompts: every provider
+	taskGeminiOnly task = "gemini-only" // files, youtube videos, and url context
+)
+
 // keyModelCombo is a single (api key, model) pairing subject to quota.
 type keyModelCombo struct {
-	apiKey string
-	model  string
+	provider provider
+	apiKey   string
+	model    string
 
 	// apiKeyHash identifies `apiKey` in persisted cooldowns, so that the key
 	// itself is never written to the cache
 	apiKeyHash string
+}
+
+// supports reports whether the combo's provider can do given task.
+func (combo keyModelCombo) supports(t task) bool {
+	return t == taskText || combo.provider == providerGemini
 }
 
 // hashAPIKey returns a short, non-reversible id of given api key.
@@ -100,22 +130,13 @@ func hashAPIKey(apiKey string) string {
 }
 
 // NewClient returns a new client with memory cache.
+//
+// EXAONE API keys can be added with `SetExaoneAPIKeys`.
 func NewClient(
 	googleAIAPIKeys []string,
 	feedsURLs []string,
 ) *Client {
-	c := &Client{
-		feedsURLs: feedsURLs,
-		cache:     newMemCache(),
-
-		googleAIAPIKeys: googleAIAPIKeys,
-		googleAIModels:  []string{defaultGoogleAIModel},
-
-		desiredLanguage:          defaultDesiredLanguage,
-		summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
-	}
-	c.buildCombos()
-	return c
+	return newClientWithCache(googleAIAPIKeys, feedsURLs, newMemCache())
 }
 
 // NewClientWithDB returns a new client with SQLite DB cache.
@@ -125,26 +146,53 @@ func NewClientWithDB(
 	dbFilepath string,
 ) (client *Client, err error) {
 	if dbCache, err := newDBCache(dbFilepath); err == nil {
-		c := &Client{
-			feedsURLs: feedsURLs,
-			cache:     dbCache,
-
-			googleAIAPIKeys: googleAIAPIKeys,
-			googleAIModels:  []string{defaultGoogleAIModel},
-
-			desiredLanguage:          defaultDesiredLanguage,
-			summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
-		}
-		c.buildCombos()
-		return c, nil
+		return newClientWithCache(googleAIAPIKeys, feedsURLs, dbCache), nil
 	} else {
 		return nil, fmt.Errorf("failed to create a client with DB: %w", err)
 	}
 }
 
+// newClientWithCache returns a new client with given cache and default settings.
+func newClientWithCache(
+	googleAIAPIKeys []string,
+	feedsURLs []string,
+	cache FeedsItemsCache,
+) *Client {
+	c := &Client{
+		feedsURLs: feedsURLs,
+		cache:     cache,
+
+		googleAIAPIKeys: googleAIAPIKeys,
+		googleAIModels:  []string{defaultGoogleAIModel},
+
+		exaoneModels: []string{defaultExaoneModel},
+		exaone:       defaultExaoneSettings(),
+
+		desiredLanguage:          defaultDesiredLanguage,
+		summarizeIntervalSeconds: defaultSummarizeIntervalSeconds,
+	}
+	c.buildCombos()
+	return c
+}
+
 // SetGoogleAIModels sets the client's Google AI models.
 func (c *Client) SetGoogleAIModels(models []string) {
 	c.googleAIModels = models
+	c.buildCombos()
+}
+
+// SetExaoneAPIKeys sets the client's EXAONE API keys.
+//
+// EXAONE combos are used for text contents only: files (eg. PDF), YouTube
+// videos, and urls which could not be fetched are summarized with Gemini.
+func (c *Client) SetExaoneAPIKeys(apiKeys []string) {
+	c.exaoneAPIKeys = apiKeys
+	c.buildCombos()
+}
+
+// SetExaoneModels sets the client's EXAONE models.
+func (c *Client) SetExaoneModels(models []string) {
+	c.exaoneModels = models
 	c.buildCombos()
 }
 
@@ -155,11 +203,17 @@ func (c *Client) buildCombos() {
 	c.cooldownMu.Lock()
 	defer c.cooldownMu.Unlock()
 
-	combos := make([]keyModelCombo, 0, len(c.googleAIAPIKeys)*len(c.googleAIModels))
+	combos := make([]keyModelCombo, 0, len(c.googleAIAPIKeys)*len(c.googleAIModels)+len(c.exaoneAPIKeys)*len(c.exaoneModels))
 	for _, key := range c.googleAIAPIKeys {
 		hash := hashAPIKey(key)
 		for _, model := range c.googleAIModels {
-			combos = append(combos, keyModelCombo{apiKey: key, apiKeyHash: hash, model: model})
+			combos = append(combos, keyModelCombo{provider: providerGemini, apiKey: key, apiKeyHash: hash, model: model})
+		}
+	}
+	for _, key := range c.exaoneAPIKeys {
+		hash := hashAPIKey(key)
+		for _, model := range c.exaoneModels {
+			combos = append(combos, keyModelCombo{provider: providerExaone, apiKey: key, apiKeyHash: hash, model: model})
 		}
 	}
 	c.combos = combos
@@ -397,9 +451,15 @@ outer:
 // should be left untouched and retried in a later run, rather than cached with
 // an error message as their summary.
 func isRetriableLater(err error) bool {
-	return gt.IsModelOverloaded(err) || // http 503 ('The model is overloaded.')
+	return isOverloaded(err) || // http 503 ('The model is overloaded.'), or http 5xx from EXAONE
 		isQuotaError(err) || // http 429 (quota exceeded)
 		errors.Is(err, ErrNoAvailableAPIKey) // all (key, model) combos are in cooldown
+}
+
+// isOverloaded reports whether the error means the model cannot serve now, but
+// another model might.
+func isOverloaded(err error) bool {
+	return gt.IsModelOverloaded(err) || isExaoneServerError(err)
 }
 
 // isQuotaError reports whether the error is an http 429 from the API.
@@ -409,6 +469,10 @@ func isRetriableLater(err error) bool {
 // 'Resource has been exhausted'). Those must cool the combo down and fail over
 // all the same, so the status code alone is enough here.
 func isQuotaError(err error) bool {
+	var exaoneErr *exaoneAPIError
+	if errors.As(err, &exaoneErr) {
+		return exaoneErr.StatusCode == http.StatusTooManyRequests
+	}
 	if gt.IsQuotaExceeded(err) {
 		return true
 	}
@@ -536,6 +600,12 @@ func (c *Client) fetch(
 // ErrNoAvailableAPIKey is returned when every (key, model) combo is in cooldown.
 var ErrNoAvailableAPIKey = errors.New("no available api key/model (all in cooldown)")
 
+// ErrNoProviderForTask is returned when no configured provider can do the task
+// at all (eg. a PDF file with EXAONE api keys only).
+//
+// NOTE: it is not retriable later, so the item is cached with the error message.
+var ErrNoProviderForTask = errors.New("no configured api key/model supports this content")
+
 // cooldownDuration derives a cooldown duration from a quota (429) error.
 //
 // A server-provided RetryInfo.retryDelay is honored as-is on the first failure.
@@ -557,6 +627,10 @@ func cooldownDuration(err error, failures int, now time.Time) time.Duration {
 	details := gt.ErrDetails(err)
 
 	delay, ok := parseRetryDelay(details)
+	var exaoneErr *exaoneAPIError
+	if errors.As(err, &exaoneErr) && exaoneErr.RetryAfter > 0 {
+		delay, ok = exaoneErr.RetryAfter, true
+	}
 	if !ok {
 		delay = fallback
 	}
@@ -647,6 +721,12 @@ func parseRetryDelay(details []map[string]any) (delay time.Duration, ok bool) {
 // counter) whose cooldown has expired at `now` and whose model is not in
 // `skipModels`. ok is false if no such combo is left.
 func (c *Client) pickAvailableCombo(now time.Time, skipModels map[string]bool) (combo keyModelCombo, idx int, ok bool) {
+	return c.pickAvailableComboFor(taskText, now, skipModels)
+}
+
+// pickAvailableComboFor is `pickAvailableCombo` among the combos which
+// support given task.
+func (c *Client) pickAvailableComboFor(t task, now time.Time, skipModels map[string]bool) (combo keyModelCombo, idx int, ok bool) {
 	start := int(c._numRequests.Add(1) - 1)
 
 	c.cooldownMu.Lock()
@@ -655,7 +735,7 @@ func (c *Client) pickAvailableCombo(now time.Time, skipModels map[string]bool) (
 	n := len(c.combos)
 	for i := 0; i < n; i++ {
 		candidate := (start + i) % n
-		if skipModels[c.combos[candidate].model] {
+		if !c.combos[candidate].supports(t) || skipModels[c.combos[candidate].model] {
 			continue
 		}
 		until, inCooldown := c.cooldownUntil[candidate]
@@ -667,9 +747,19 @@ func (c *Client) pickAvailableCombo(now time.Time, skipModels map[string]bool) (
 	return keyModelCombo{}, 0, false
 }
 
+// hasComboFor reports whether any combo (in cooldown or not) supports given task.
+func (c *Client) hasComboFor(t task) bool {
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+
+	return slices.ContainsFunc(c.combos, func(combo keyModelCombo) bool {
+		return combo.supports(t)
+	})
+}
+
 // ListCachedItems lists cached items.
 func (c *Client) ListCachedItems(includeItemsMarkedAsRead bool) []CachedItem {
-	return redactItems(c.cache.List(includeItemsMarkedAsRead), c.googleAIAPIKeys)
+	return redactItems(c.cache.List(includeItemsMarkedAsRead), slices.Concat(c.googleAIAPIKeys, c.exaoneAPIKeys))
 }
 
 // MarkCachedItemsAsRead marks given cached items as read.

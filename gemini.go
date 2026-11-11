@@ -121,40 +121,62 @@ func (c *Client) newGeminiClientForCombo(combo keyModelCombo) (gtc *gt.Client, e
 	return gtc, nil
 }
 
-// withFailover picks an available combo, runs `run`, and retries with the next
-// available combo when the error is retriable with another combo:
-//   - on a quota (429) error, that combo's cooldown is marked and any other
-//     available combo may be tried
-//   - on an overloaded model (503), only combos with a *different* model are
-//     tried, as another api key for the same model would hit the same
-//     overloaded model. The 503 is returned when no other model is left.
-//
-// Other errors are returned immediately. When no combo is left, it returns
-// ErrNoAvailableAPIKey wrapping the last quota error (so that the exhausted
-// quota and its retry delay stay visible in logs).
+// withFailover is `withFailoverFor` with Gemini combos only, for the tasks
+// which only Gemini can do (files, youtube videos, url context).
 func (c *Client) withFailover(
 	now func() time.Time,
 	run func(gtc *gt.Client, model string) error,
 ) (usedModel string, err error) {
+	return c.withFailoverFor(taskGeminiOnly, now, func(combo keyModelCombo) error {
+		gtc, cerr := c.newGeminiClientForCombo(combo)
+		if cerr != nil {
+			return cerr
+		}
+		defer closeGeminiClient(gtc)
+
+		return run(gtc, combo.model)
+	})
+}
+
+// withFailoverFor picks an available combo which supports task `t`, runs `run`,
+// and retries with the next available combo when the error is retriable with
+// another combo:
+//   - on a quota (429) error, that combo's cooldown is marked and any other
+//     available combo may be tried
+//   - on an overloaded model (503, or 5xx from EXAONE), only combos with a
+//     *different* model are tried, as another api key for the same model would
+//     hit the same overloaded model. The error is returned when no other model
+//     is left.
+//
+// Other errors are returned immediately. When no combo is left, it returns
+// ErrNoAvailableAPIKey wrapping the last quota error (so that the exhausted
+// quota and its retry delay stay visible in logs).
+//
+// When api keys are configured but none of them supports `t`, it returns
+// ErrNoProviderForTask without trying anything.
+func (c *Client) withFailoverFor(
+	t task,
+	now func() time.Time,
+	run func(combo keyModelCombo) error,
+) (usedModel string, err error) {
+	// NOTE: without any api key, it stays ErrNoAvailableAPIKey (retriable later)
+	if len(c.combos) > 0 && !c.hasComboFor(t) {
+		return "", fmt.Errorf("%w (%s)", ErrNoProviderForTask, t)
+	}
+
 	overloadedModels := map[string]bool{}
 	var overloadErr error // the last 503, if any
 	var quotaErr error    // the last 429, if any
 
 	attempts := len(c.combos)
 	for range attempts {
-		combo, idx, ok := c.pickAvailableCombo(now(), overloadedModels)
+		combo, idx, ok := c.pickAvailableComboFor(t, now(), overloadedModels)
 		if !ok {
 			break
 		}
 		usedModel = combo.model
 
-		gtc, cerr := c.newGeminiClientForCombo(combo)
-		if cerr != nil {
-			return usedModel, cerr
-		}
-
-		runErr := run(gtc, combo.model)
-		closeGeminiClient(gtc)
+		runErr := run(combo)
 
 		if runErr == nil {
 			c.clearCooldown(idx)
@@ -165,7 +187,7 @@ func (c *Client) withFailover(
 			quotaErr = runErr
 			continue
 		}
-		if gt.IsModelOverloaded(runErr) {
+		if isOverloaded(runErr) {
 			// NOTE: not a cooldown; the model is skipped for this call only
 			overloadedModels[combo.model] = true
 			overloadErr = runErr
@@ -199,16 +221,48 @@ func closeGeminiClient(gtc *gt.Client) {
 }
 
 // translate and summarize given things
+//
+// Text prompts can be served by any provider, but files only by Gemini.
 func (c *Client) translateAndSummarize(
 	ctx context.Context,
 	prompt string,
 	files ...[]byte,
 ) (usedModel, translatedTitle, summarizedContent string, err error) {
+	t := taskText
+	if len(files) > 0 {
+		t = taskGeminiOnly
+	}
+
+	usedModel, err = c.withFailoverFor(t, time.Now, func(combo keyModelCombo) (rerr error) {
+		if combo.provider == providerExaone {
+			translatedTitle, summarizedContent, rerr = c.exaoneTranslateAndSummarize(ctx, combo, prompt)
+			return rerr
+		}
+
+		gtc, cerr := c.newGeminiClientForCombo(combo)
+		if cerr != nil {
+			return cerr
+		}
+		defer closeGeminiClient(gtc)
+
+		translatedTitle, summarizedContent, rerr = geminiTranslateAndSummarize(ctx, gtc, combo.model, prompt, files...)
+		return rerr
+	})
+
+	return usedModel, translatedTitle, summarizedContent, err
+}
+
+// translate and summarize given things with Gemini
+func geminiTranslateAndSummarize(
+	ctx context.Context,
+	gtc *gt.Client,
+	model string,
+	prompt string,
+	files ...[]byte,
+) (translatedTitle, summarizedContent string, err error) {
 	buffer := strings.Builder{}
 
-	usedModel, err = c.withFailover(time.Now, func(gtc *gt.Client, model string) error {
-		buffer.Reset()
-		translatedTitle = ""
+	err = func() error {
 		setCustomFileConverters(gtc)
 
 		// prompt & files
@@ -265,9 +319,9 @@ func (c *Client) translateAndSummarize(
 			return fmt.Errorf("summarized content was empty [%s]", model)
 		}
 		return nil
-	})
+	}()
 
-	return usedModel, translatedTitle, buffer.String(), err
+	return translatedTitle, buffer.String(), err
 }
 
 // summarize given url

@@ -13,12 +13,14 @@ A go utility package for handling RSS/Atom feeds.
 - [X] Cache fetched feeds locally
   - [X] In memory
   - [X] In SQLite3 file
-- [X] Summarize contents of fetched feed items with Google Gemini API
-  - [X] Save summarized contents locally
+- [X] Summarize contents of fetched feed items
+  - [X] With Google Gemini API
+  - [X] And with [EXAONE API](https://docs.exaone.ai) (text contents only: files, YouTube videos, and unfetchable urls need Gemini)
+  - [X] Then save summarized contents locally
     - [X] In memory
     - [X] In SQLite3 file
   - [ ] Transfer summarized contents to somewhere else
-- [X] Convert cached feeds as RSS XML
+- [X] And convert cached feeds as RSS XML
 
 ## Installation
 
@@ -54,6 +56,7 @@ func main() {
 
   // (optional) configure client
   client.SetGoogleAIModels([]string{"gemini-3.6-flash"})
+  client.SetExaoneAPIKeys([]string{"your-exaone-api-key"}) // round-robined with gemini for text contents
   client.SetDesiredLanguage("Korean")
   client.SetVerbose(true)
 
