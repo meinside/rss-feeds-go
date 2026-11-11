@@ -106,6 +106,40 @@ func TestExaoneTranslateAndSummarizeWithToolCall(t *testing.T) {
 	}
 }
 
+// roundTripFunc is an http.RoundTripper from a function.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+// RoundTrip implements http.RoundTripper.
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// requests must be sent with the http client set by `SetExaoneHTTPClient`, so
+// that its transport can replace a placeholder api key with a renewed one
+func TestExaoneTranslateAndSummarizeWithHTTPClient(t *testing.T) {
+	c := newExaoneTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer renewed-key" {
+			t.Errorf("unexpected authorization header: %q", got)
+		}
+		writeExaoneResponse(w, http.StatusOK, exaoneToolCallResponse)
+	}, "placeholder-key")
+
+	var used atomic.Int32
+	c.SetExaoneHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			used.Add(1)
+			r = r.Clone(r.Context())
+			r.Header.Set("Authorization", "Bearer renewed-key")
+			return http.DefaultTransport.RoundTrip(r)
+		}),
+	})
+
+	if _, _, _, err := c.translateAndSummarize(context.Background(), "the prompt"); err != nil {
+		t.Fatalf("expected success, got %s", err)
+	}
+	if used.Load() != 1 {
+		t.Errorf("the http client was used %d times, want 1", used.Load())
+	}
+}
+
 // without a function call, the content is used (and the reasoning is not)
 func TestExaoneTranslateAndSummarizeWithContentOnly(t *testing.T) {
 	c := newExaoneTestClient(t, func(w http.ResponseWriter, r *http.Request) {

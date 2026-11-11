@@ -46,6 +46,17 @@ type exaoneSettings struct {
 	baseURL            string
 	requestInterval    time.Duration
 	serverErrorBackoff time.Duration
+
+	// httpClient sends the requests, or `http.DefaultClient` when nil
+	httpClient *http.Client
+}
+
+// client returns the http client for EXAONE API requests.
+func (s exaoneSettings) client() *http.Client {
+	if s.httpClient != nil {
+		return s.httpClient
+	}
+	return http.DefaultClient
 }
 
 // defaultExaoneSettings returns the default EXAONE settings.
@@ -363,7 +374,7 @@ func (c *Client) exaoneGenerate(
 	req.Header.Set("Authorization", "Bearer "+combo.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.exaone.client().Do(req)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to request exaone api: %w", err)
 	}
