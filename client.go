@@ -379,6 +379,13 @@ func (c *Client) fetchSingleFeed(
 //
 // If there was a retriable error(eg. model overloads or exhausted quota), it will
 // return immediately. (remaining feed items will be retried later)
+//
+// Exhausted quotas are handled by how long they last (see `deferralFor`):
+//   - when the needed (key, model) combos recover within
+//     `longCooldownThreshold`, the item is retried later
+//   - otherwise, the item is cached with the error message (and the time of
+//     recovery), so that a backlog does not use up the recovered quota at once
+//     and delay the new items again
 func (c *Client) SummarizeAndCacheFeeds(
 	ctx context.Context,
 	feeds []gofeed.Feed,
@@ -389,62 +396,36 @@ func (c *Client) SummarizeAndCacheFeeds(
 outer:
 	for _, f := range feeds {
 		for i, item := range f.Items {
-			// context with timeout
-			itemCtx, cancel := context.WithTimeout(
-				ctx,
-				summarizeTimeoutSeconds*time.Second,
-			)
+			result := c.summarizeItem(ctx, item, urlScrapper...)
 
-			// summarize,
-			usedModel, translatedTitle, summarizedContent, err := c.summarize(
-				itemCtx,
-				item.Title,
-				item.Link,
-				urlScrapper...,
-			)
-			cancel()
+			switch result.deferral {
+			case deferRun:
+				v(c.verbose, "skipping remaining feed items due to retriable error with model %s (will be retried later): %s", result.usedModel, gt.ErrToStr(result.err))
 
-			if err != nil {
-				// NOTE: skip remaining feed items if err is:
-				//   - http 503 ('The model is overloaded. Please try again later.')
-				//   - http 429 (quota exceeded), or every (key, model) combo is in cooldown
-				// for retrying later
-				//
-				// NOTE: such items must not be cached, or their error messages would be
-				// served as their summaries forever
-				if isRetriableLater(err) {
-					v(c.verbose, "skipping remaining feed items due to retriable error with model %s (will be retried later): %s", usedModel, gt.ErrToStr(err))
+				errs = append(errs, result.err)
 
-					errs = append(errs, err)
+				break outer
+			case deferItem:
+				v(c.verbose, "skipping feed item '%s' due to retriable error (will be retried later): %s", item.Title, gt.ErrToStr(result.err))
 
-					break outer
+				errs = append(errs, fmt.Errorf("skipped item '%s' (%s) for retrying later: %w", item.Title, item.Link, result.err))
+			default:
+				if result.err != nil {
+					errs = append(errs, fmt.Errorf("failed to summarize item '%s' (%s): %w", item.Title, item.Link, result.err))
 				}
 
-				// prepend error text to the original content
-				summarizedContent = fmt.Sprintf("<p>%s</p>\n<hr>\n%s", summarizedContent, item.Description)
-
-				errs = append(errs, fmt.Errorf("failed to summarize item '%s' (%s): %w", item.Title, item.Link, err))
-			} else {
-				// append the result of summary to the content
-				summarizedContent = fmt.Sprintf(
-					"%s\n\n(summarized with **%s**, %s)",
-					summarizedContent,
-					usedModel,
-					time.Now().Format("2006-01-02 15:04:05 (Mon) MST"),
-				)
-			}
-
-			// trim translated/summarized contents
-			translatedTitle = strings.TrimSpace(translatedTitle)
-			summarizedContent = strings.TrimSpace(summarizedContent)
-
-			// cache, (or update)
-			if cacheErr := c.cache.Save(*item, translatedTitle, summarizedContent); cacheErr != nil {
-				errs = append(errs, fmt.Errorf("failed to cache item '%s': %w", item.Title, cacheErr))
+				// cache, (or update)
+				if cacheErr := c.cache.Save(
+					*item,
+					strings.TrimSpace(result.translatedTitle),
+					strings.TrimSpace(result.summarizedContent),
+				); cacheErr != nil {
+					errs = append(errs, fmt.Errorf("failed to cache item '%s': %w", item.Title, cacheErr))
+				}
 			}
 
 			// and sleep for a while
-			if i < len(f.Items)-1 {
+			if result.requested && i < len(f.Items)-1 {
 				time.Sleep(time.Duration(c.summarizeIntervalSeconds) * time.Second)
 			}
 		}
@@ -455,6 +436,132 @@ outer:
 	}
 
 	return nil
+}
+
+// longCooldownThreshold is the cooldown from which an item is cached as failed
+// instead of being retried later (see `SummarizeAndCacheFeeds`).
+//
+// NOTE: it must stay above the longest self-escalated cooldown
+// (`maxEscalatedCooldownSeconds` + its jitter, ~36 minutes), so that only
+// quotas which do not recover soon (eg. Gemini's daily quota, or a long
+// retry-after from EXAONE) fail items, and per-minute quotas do not.
+const longCooldownThreshold = 1 * time.Hour
+
+// deferral tells how a feed item is left for a later run.
+type deferral int
+
+const (
+	deferNone deferral = iota // cached, (successfully or not)
+	deferItem                 // not cached for retrying later, and the run goes on
+	deferRun                  // not cached, and the remaining items are left for a later run too
+)
+
+// itemResult is the result of `summarizeItem`.
+type itemResult struct {
+	usedModel         string
+	translatedTitle   string
+	summarizedContent string // to be cached, with the error message prepended when `err` is not nil
+	err               error
+	deferral          deferral
+
+	// requested is false when nothing was requested (eg. failed as every combo
+	// is in a long cooldown), so that no interval is needed before the next item
+	requested bool
+}
+
+// summarizeItem summarizes given feed item, or tells to defer it.
+func (c *Client) summarizeItem(
+	ctx context.Context,
+	item *gofeed.Item,
+	urlScrapper ...*ssg.Scrapper,
+) (result itemResult) {
+	// NOTE: when every combo is in a long cooldown, nothing can be summarized:
+	// fail without fetching the content
+	if until, long := c.longCooldownFor(taskText, time.Now()); long {
+		result.err = fmt.Errorf("%w until %s", ErrNoAvailableAPIKey, formatCooldownEnd(until))
+		result.translatedTitle = item.Title
+		result.summarizedContent = withOriginalContent(failedSummary("", result.err), item)
+		return result
+	}
+
+	result.requested = true
+
+	// context with timeout
+	itemCtx, cancel := context.WithTimeout(ctx, summarizeTimeoutSeconds*time.Second)
+	defer cancel()
+
+	// summarize,
+	usedModel, translatedTitle, summarizedContent, err := c.summarize(
+		itemCtx,
+		item.Title,
+		item.Link,
+		urlScrapper...,
+	)
+	result.usedModel, result.translatedTitle, result.err = usedModel, translatedTitle, err
+
+	if err == nil {
+		// append the result of summary to the content
+		result.summarizedContent = fmt.Sprintf(
+			"%s\n\n(summarized with **%s**, %s)",
+			summarizedContent,
+			usedModel,
+			time.Now().Format("2006-01-02 15:04:05 (Mon) MST"),
+		)
+		return result
+	}
+
+	// NOTE: items deferred here must not be cached, or their error messages
+	// would be served as their summaries forever
+	if isRetriableLater(err) {
+		var until time.Time
+		if result.deferral, until = c.deferralFor(err, time.Now()); result.deferral != deferNone {
+			return result
+		}
+
+		result.err = fmt.Errorf("%w (until %s)", err, formatCooldownEnd(until))
+		summarizedContent = failedSummary(usedModel, result.err)
+	}
+
+	// prepend error text to the original content
+	result.summarizedContent = withOriginalContent(summarizedContent, item)
+
+	return result
+}
+
+// deferralFor tells how an item which failed with given retriable error is
+// left for a later run, and when the needed combos recover (for a failed
+// summary, when it is not deferred).
+func (c *Client) deferralFor(err error, now time.Time) (deferral, time.Time) {
+	// NOTE: other retriable errors (eg. overloaded models) are transient
+	if !errors.Is(err, ErrNoAvailableAPIKey) {
+		return deferRun, time.Time{}
+	}
+
+	// nothing can be summarized now: every combo is in cooldown
+	if at, ok := c.nextAvailableAtFor(taskText, now); !ok || at.After(now) {
+		if ok && at.Sub(now) >= longCooldownThreshold {
+			return deferNone, at
+		}
+		return deferRun, at
+	}
+
+	// only Gemini-only contents (files, youtube videos, url context) cannot be
+	// summarized now: other items can go on with the other (eg. EXAONE) combos
+	if until, long := c.longCooldownFor(taskGeminiOnly, now); long {
+		return deferNone, until
+	}
+	return deferItem, time.Time{}
+}
+
+// withOriginalContent prepends given error text to the original content of
+// the item.
+func withOriginalContent(errorText string, item *gofeed.Item) string {
+	return fmt.Sprintf("<p>%s</p>\n<hr>\n%s", errorText, item.Description)
+}
+
+// formatCooldownEnd formats the end of a cooldown for failed summaries.
+func formatCooldownEnd(t time.Time) string {
+	return t.Format("2006-01-02 15:04:05 MST")
 }
 
 // isRetriableLater reports whether the error means the remaining feed items
@@ -755,6 +862,35 @@ func (c *Client) pickAvailableComboFor(t task, now time.Time, skipModels map[str
 		return c.combos[candidate], candidate, true
 	}
 	return keyModelCombo{}, 0, false
+}
+
+// nextAvailableAtFor returns when the first combo which supports given task
+// gets out of cooldown (`now` if one is already available). ok is false when
+// no combo supports the task.
+func (c *Client) nextAvailableAtFor(t task, now time.Time) (at time.Time, ok bool) {
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+
+	for i, combo := range c.combos {
+		if !combo.supports(t) {
+			continue
+		}
+		until, inCooldown := c.cooldownUntil[i]
+		if !inCooldown || !until.After(now) {
+			return now, true
+		}
+		if !ok || until.Before(at) {
+			at, ok = until, true
+		}
+	}
+	return at, ok
+}
+
+// longCooldownFor reports whether every combo which supports given task is in
+// cooldown for `longCooldownThreshold` or longer, and until when.
+func (c *Client) longCooldownFor(t task, now time.Time) (until time.Time, long bool) {
+	at, ok := c.nextAvailableAtFor(t, now)
+	return at, ok && at.Sub(now) >= longCooldownThreshold
 }
 
 // hasComboFor reports whether any combo (in cooldown or not) supports given task.
