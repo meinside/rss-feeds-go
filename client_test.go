@@ -176,7 +176,6 @@ func TestNewClientWithDB(t *testing.T) {
 			t.Fatal("expected non-nil client")
 		}
 	})
-
 }
 
 // test setter methods
@@ -395,7 +394,7 @@ func TestFetchFeeds(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
-		fmt.Fprint(w, rssFeed)
+		_, _ = fmt.Fprint(w, rssFeed)
 	}))
 	defer server.Close()
 
@@ -437,7 +436,7 @@ func TestFetchFeedsIgnoreCached(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
-		fmt.Fprint(w, rssFeed)
+		_, _ = fmt.Fprint(w, rssFeed)
 	}))
 	defer server.Close()
 
@@ -505,7 +504,7 @@ func TestFetchFeedsOldItemsFiltered(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/rss+xml")
-		fmt.Fprint(w, rssFeed)
+		_, _ = fmt.Fprint(w, rssFeed)
 	}))
 	defer server.Close()
 
@@ -533,7 +532,7 @@ func TestFetchFeedsOldItemsFiltered(t *testing.T) {
 func TestSummarizeAndCacheFeedsSkipsOnRetriableError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<html><body><p>article body</p></body></html>`)
+		_, _ = fmt.Fprint(w, `<html><body><p>article body</p></body></html>`)
 	}))
 	defer server.Close()
 
@@ -577,7 +576,7 @@ func TestSummarizeAndCacheFeedsSkipsOnRetriableError(t *testing.T) {
 func TestSummarizeAndCacheFeedsCachesNonRetriableError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream") // not summarizable
-		fmt.Fprint(w, "binary junk")
+		_, _ = fmt.Fprint(w, "binary junk")
 	}))
 	defer server.Close()
 
