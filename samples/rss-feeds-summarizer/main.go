@@ -12,7 +12,7 @@ const (
 	googleAIAPIKey = "abcdefghijklmnopqrstuvwxyz0123456789" // NOTE: change it to yours
 	exaoneAPIKey   = ""                                     // NOTE: (optional) set yours for summarizing text contents with EXAONE too
 
-	googleAIModel   = "gemini-3.6-flash"
+	googleAIModel   = "gemini-3.8-flash"
 	dbFilepath      = "./test.db"
 	desiredLanguage = "Korean"
 	// verbose         = false

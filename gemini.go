@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	defaultGoogleAIModel = "gemini-3.6-flash"
+	defaultGoogleAIModel = `gemini-3.8-flash`
 
 	systemInstructionFormatForSummary = `You are a precise and useful agent for summarizing and translating contents retrieved from web sites or RSS/Atom feeds.
 

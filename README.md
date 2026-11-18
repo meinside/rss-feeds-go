@@ -55,7 +55,7 @@ func main() {
   }
 
   // (optional) configure client
-  client.SetGoogleAIModels([]string{"gemini-3.6-flash"})
+  client.SetGoogleAIModels([]string{"gemini-3.8-flash"})
   client.SetExaoneAPIKeys([]string{"your-exaone-api-key"}) // round-robined with gemini for text contents
   //client.SetExaoneHTTPClient(&http.Client{Transport: ...}) // eg. for setting renewed api keys on requests
   client.SetDesiredLanguage("Korean")
