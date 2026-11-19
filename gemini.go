@@ -147,6 +147,10 @@ func (c *Client) withFailover(
 //     *different* model are tried, as another api key for the same model would
 //     hit the same overloaded model. The error is returned when no other model
 //     is left.
+//   - on a timeout, likewise only combos with a *different* model are tried.
+//     When no other model is left, the timeout is returned, and as it is not
+//     retriable later, the item is cached as failed: content which times out
+//     with every model must not be retried (and block the other items) forever.
 //
 // Other errors are returned immediately. When no combo is left, it returns
 // ErrNoAvailableAPIKey wrapping the last quota error (so that the exhausted
@@ -164,13 +168,14 @@ func (c *Client) withFailoverFor(
 		return "", fmt.Errorf("%w (%s)", ErrNoProviderForTask, t)
 	}
 
-	overloadedModels := map[string]bool{}
-	var overloadErr error // the last 503, if any
-	var quotaErr error    // the last 429, if any
+	skippedModels := map[string]bool{} // overloaded or timed out in this call
+	var overloadErr error              // the last 503, if any
+	var timeoutErr error               // the last timeout, if any
+	var quotaErr error                 // the last 429, if any
 
 	attempts := len(c.combos)
 	for range attempts {
-		combo, idx, ok := c.pickAvailableComboFor(t, now(), overloadedModels)
+		combo, idx, ok := c.pickAvailableComboFor(t, now(), skippedModels)
 		if !ok {
 			break
 		}
@@ -189,8 +194,15 @@ func (c *Client) withFailoverFor(
 		}
 		if isOverloaded(runErr) {
 			// NOTE: not a cooldown; the model is skipped for this call only
-			overloadedModels[combo.model] = true
+			skippedModels[combo.model] = true
 			overloadErr = runErr
+			continue
+		}
+		if isTimeout(runErr) {
+			v(c.verbose, "model '%s' timed out, trying another model: %s", combo.model, gt.ErrToStr(runErr))
+
+			skippedModels[combo.model] = true
+			timeoutErr = runErr
 			continue
 		}
 		return usedModel, runErr
@@ -200,15 +212,23 @@ func (c *Client) withFailoverFor(
 	// `ErrNoAvailableAPIKey` and no hint of which quota ran out until when.
 	//
 	// NOTE: only one `genai.APIError` can be found by `errors.As` in a chain, so
-	// the quota error (the actionable one) is the wrapped one, and a 503 is only
-	// appended as text.
+	// the quota error (the actionable one) is the wrapped one, and a 503 or a
+	// timeout is only appended as text.
+	var others []string
+	for _, e := range []error{overloadErr, timeoutErr} {
+		if e != nil {
+			others = append(others, gt.ErrToStr(e))
+		}
+	}
 	switch {
-	case quotaErr != nil && overloadErr != nil:
-		return usedModel, fmt.Errorf("%w: %w (also: %s)", ErrNoAvailableAPIKey, quotaErr, gt.ErrToStr(overloadErr))
+	case quotaErr != nil && len(others) > 0:
+		return usedModel, fmt.Errorf("%w: %w (also: %s)", ErrNoAvailableAPIKey, quotaErr, strings.Join(others, "; "))
 	case quotaErr != nil:
 		return usedModel, fmt.Errorf("%w: %w", ErrNoAvailableAPIKey, quotaErr)
 	case overloadErr != nil:
 		return usedModel, overloadErr
+	case timeoutErr != nil:
+		return usedModel, timeoutErr
 	}
 	return usedModel, ErrNoAvailableAPIKey
 }
@@ -245,7 +265,7 @@ func (c *Client) translateAndSummarize(
 		}
 		defer closeGeminiClient(gtc)
 
-		translatedTitle, summarizedContent, rerr = geminiTranslateAndSummarize(ctx, gtc, combo.model, prompt, files...)
+		translatedTitle, summarizedContent, rerr = geminiTranslateAndSummarize(ctx, gtc, combo.model, c.googleAIThinkingLevel, prompt, files...)
 		return rerr
 	})
 
@@ -257,6 +277,7 @@ func geminiTranslateAndSummarize(
 	ctx context.Context,
 	gtc *gt.Client,
 	model string,
+	thinkingLevel genai.ThinkingLevel,
 	prompt string,
 	files ...[]byte,
 ) (translatedTitle, summarizedContent string, err error) {
@@ -281,7 +302,7 @@ func geminiTranslateAndSummarize(
 		}
 
 		// generate options with tools
-		options := genOptionsWithTools(generationTimeoutSeconds*time.Second, maxRetryCount)
+		options := withThinkingLevel(genOptionsWithTools(generationTimeoutSeconds*time.Second, maxRetryCount), thinkingLevel)
 
 		result, gerr := gtc.Generate(ctx, contents, options)
 		if gerr != nil {
@@ -351,7 +372,7 @@ func (c *Client) summarizeURL(
 		}
 
 		// generate options with url context
-		options := genOptionsWithURLContext(generationTimeoutSeconds*time.Second, maxRetryCount)
+		options := withThinkingLevel(genOptionsWithURLContext(generationTimeoutSeconds*time.Second, maxRetryCount), c.googleAIThinkingLevel)
 
 		result, gerr := gtc.Generate(ctx, contents, options)
 		if gerr != nil {
@@ -360,6 +381,10 @@ func (c *Client) summarizeURL(
 
 		if len(result.Candidates) > 0 {
 			candidate := result.Candidates[0]
+
+			if rerr := urlRetrievalError(candidate); rerr != nil {
+				return rerr
+			}
 
 			if content := candidate.Content; content != nil {
 				for _, part := range content.Parts {
@@ -384,6 +409,32 @@ func (c *Client) summarizeURL(
 	return usedModel, title, outBuffer.String(), err
 }
 
+// urlRetrievalError returns an error when the url context tool reports that
+// none of the urls could be retrieved: the model answers something anyway (eg.
+// that it cannot access the url), which must not be cached as a summary.
+//
+// NOTE: without the metadata, it cannot be told, so nil is returned.
+func urlRetrievalError(candidate *genai.Candidate) error {
+	if candidate == nil || candidate.URLContextMetadata == nil {
+		return nil
+	}
+
+	var failed []string
+	for _, m := range candidate.URLContextMetadata.URLMetadata {
+		if m == nil {
+			continue
+		}
+		if m.URLRetrievalStatus == genai.URLRetrievalStatusSuccess {
+			return nil
+		}
+		failed = append(failed, fmt.Sprintf("%s (%s)", m.RetrievedURL, m.URLRetrievalStatus))
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return fmt.Errorf("failed to retrieve url with url context: %s", strings.Join(failed, ", "))
+}
+
 // translate and summarize given youtube url
 func (c *Client) translateAndSummarizeYouTube(
 	ctx context.Context,
@@ -406,7 +457,7 @@ func (c *Client) translateAndSummarizeYouTube(
 		}
 
 		// generate options with tools
-		options := genOptionsWithTools(generationTimeoutSecondsForYoutube*time.Second, maxRetryCount)
+		options := withThinkingLevel(genOptionsWithTools(generationTimeoutSecondsForYoutube*time.Second, maxRetryCount), c.googleAIThinkingLevel)
 
 		result, gerr := gtc.Generate(ctx, contents, options)
 		if gerr != nil {
@@ -476,6 +527,14 @@ const (
 	fnParamNameSummarizedContent            = "summarizedContent"
 	fnParamDescSummarizedContent            = `Summarized content.`
 )
+
+// withThinkingLevel sets given thinking level to the options, unless it is empty.
+func withThinkingLevel(options *genai.GenerateContentConfig, level genai.ThinkingLevel) *genai.GenerateContentConfig {
+	if level != "" {
+		options.ThinkingConfig = &genai.ThinkingConfig{ThinkingLevel: level}
+	}
+	return options
+}
 
 // options for generation (with url context)
 func genOptionsWithURLContext(

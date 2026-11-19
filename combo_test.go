@@ -1,6 +1,7 @@
 package rf
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -40,22 +41,26 @@ func TestBuildCombos(t *testing.T) {
 
 func timeNowForTest() time.Time { return time.Unix(1_000_000, 0) }
 
+// round-robin must cover every (key, model) combo once in a full cycle
 func TestPickAvailableComboRoundRobin(t *testing.T) {
 	c := NewClient([]string{"k1", "k2"}, nil)
-	c.SetGoogleAIModels([]string{"m1"}) // combos: [(k1,m1),(k2,m1)]
+	c.SetGoogleAIModels([]string{"m1", "m2", "m3"}) // 6 combos
 
 	now := time.Unix(1_000_000, 0)
 
-	got := map[string]bool{}
-	for i := 0; i < 2; i++ {
+	seen := map[keyModelCombo]bool{}
+	for i := range len(c.combos) {
 		combo, _, ok := c.pickAvailableCombo(now, nil)
 		if !ok {
 			t.Fatalf("expected ok on iteration %d", i)
 		}
-		got[combo.apiKey] = true
+		if seen[combo] {
+			t.Errorf("combo %+v seen twice within one full cycle", combo)
+		}
+		seen[combo] = true
 	}
-	if !got["k1"] || !got["k2"] {
-		t.Errorf("round-robin did not cover both keys: %+v", got)
+	if len(seen) != len(c.combos) {
+		t.Errorf("expected all %d combos covered, got %d", len(c.combos), len(seen))
 	}
 }
 
@@ -120,67 +125,140 @@ func TestPickAvailableComboSkipsModels(t *testing.T) {
 	}
 }
 
-// 503 must fail over to a different model, and must not waste a call on another
-// api key for the same overloaded model
-func TestWithFailoverOverloadedModelSkipsSameModel(t *testing.T) {
-	c := NewClient([]string{"k1", "k2"}, nil)
-	c.SetGoogleAIModels([]string{"m1", "m2"}) // 4 combos
+// errors which another model might not run into: the model which failed is
+// skipped for the call, and another api key for it is never tried
+var modelSkippingErrors = []struct {
+	name string
+	err  error
 
-	now := time.Unix(1_000_000, 0)
-	nowFn := func() time.Time { return now }
+	// whether the error, when no other model is left, leaves the remaining
+	// items for a later run. A timeout must not: content which times out with
+	// every model would be retried (and block the other items) forever.
+	retriableLater bool
+}{
+	{
+		name:           "503 overloaded",
+		err:            genai.APIError{Code: 503, Message: "The model is overloaded. Please try again later."},
+		retriableLater: true,
+	},
+	{
+		name:           "timeout", // as returned by the genai SDK on `HTTPOptions.Timeout`
+		err:            fmt.Errorf("generation failed: %w", fmt.Errorf("doRequest: error sending request: %w", context.DeadlineExceeded)),
+		retriableLater: false,
+	},
+	{
+		name:           "timeout (stringified)",
+		err:            errors.New(`doRequest: error sending request: Post "https://example.com": context deadline exceeded`),
+		retriableLater: false,
+	},
+}
 
-	overloaded := genai.APIError{Code: 503, Message: "The model is overloaded. Please try again later."}
+// such an error must fail over to a different model, without a cooldown
+func TestWithFailoverSkipsFailedModel(t *testing.T) {
+	for _, tt := range modelSkippingErrors {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient([]string{"k1", "k2"}, nil)
+			c.SetGoogleAIModels([]string{"m1", "m2"}) // 4 combos, 2 per model
 
-	triedModels := []string{}
-	usedModel, err := c.withFailover(nowFn, func(gtc *gt.Client, model string) error {
-		triedModels = append(triedModels, model)
-		if model == triedModels[0] {
-			return overloaded // the first model tried is overloaded
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("expected success after failing over to another model, got %v", err)
-	}
-	if len(triedModels) != 2 {
-		t.Fatalf("expected 2 calls (one per model), got %d: %v", len(triedModels), triedModels)
-	}
-	if triedModels[0] == triedModels[1] {
-		t.Errorf("expected a different model on failover, tried %v", triedModels)
-	}
-	if usedModel != triedModels[1] {
-		t.Errorf("usedModel = %q, want %q", usedModel, triedModels[1])
-	}
-	// 503 is not a quota error, so no cooldown must be recorded
-	if len(c.cooldownUntil) != 0 {
-		t.Errorf("503 must not mark cooldown, got %d", len(c.cooldownUntil))
+			now := time.Unix(1_000_000, 0)
+
+			triedModels := []string{}
+			usedModel, err := c.withFailover(func() time.Time { return now }, func(gtc *gt.Client, model string) error {
+				triedModels = append(triedModels, model)
+				if model == triedModels[0] {
+					return tt.err // the first model tried fails
+				}
+				return nil
+			})
+			if err != nil {
+				t.Fatalf("expected success after failing over to another model, got %v", err)
+			}
+			if len(triedModels) != 2 || triedModels[0] == triedModels[1] {
+				t.Fatalf("expected 2 calls with different models, tried %v", triedModels)
+			}
+			if usedModel != triedModels[1] {
+				t.Errorf("usedModel = %q, want %q", usedModel, triedModels[1])
+			}
+			if len(c.cooldownUntil) != 0 {
+				t.Errorf("must not mark cooldown, got %d", len(c.cooldownUntil))
+			}
+		})
 	}
 }
 
-// with a single model there is nowhere to fail over to: the 503 itself must be
-// returned (so that the caller leaves the remaining items for a later run)
-func TestWithFailoverOverloadedSingleModel(t *testing.T) {
-	c := NewClient([]string{"k1", "k2"}, nil)
-	c.SetGoogleAIModels([]string{"m1"}) // 2 combos, same model
+// when every model fails so, the error itself must be returned, once per model
+func TestWithFailoverEveryModelFailed(t *testing.T) {
+	for _, tt := range modelSkippingErrors {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient([]string{"k1", "k2"}, nil)
+			c.SetGoogleAIModels([]string{"m1", "m2"}) // 4 combos, 2 per model
 
-	now := time.Unix(1_000_000, 0)
-	nowFn := func() time.Time { return now }
+			now := time.Unix(1_000_000, 0)
 
-	overloaded := genai.APIError{Code: 503, Message: "The model is overloaded. Please try again later."}
-
-	calls := 0
-	_, err := c.withFailover(nowFn, func(gtc *gt.Client, model string) error {
-		calls++
-		return overloaded
-	})
-	if calls != 1 {
-		t.Errorf("expected 1 call (no other model to try), got %d", calls)
+			calls := 0
+			_, err := c.withFailover(func() time.Time { return now }, func(gtc *gt.Client, model string) error {
+				calls++
+				return tt.err
+			})
+			if calls != 2 {
+				t.Errorf("expected 2 calls (one per model), got %d", calls)
+			}
+			if err == nil || err.Error() != tt.err.Error() {
+				t.Errorf("expected %v to be returned, got %v", tt.err, err)
+			}
+			if got := isRetriableLater(err); got != tt.retriableLater {
+				t.Errorf("isRetriableLater() = %v, want %v", got, tt.retriableLater)
+			}
+		})
 	}
-	if !gt.IsModelOverloaded(err) {
-		t.Errorf("expected the 503 to be returned, got %v", err)
+}
+
+func TestWithThinkingLevel(t *testing.T) {
+	if got := withThinkingLevel(genOptionsWithTools(time.Second, 0), ""); got.ThinkingConfig != nil {
+		t.Errorf("expected no thinking config for an empty level, got %+v", got.ThinkingConfig)
 	}
-	if !isRetriableLater(err) {
-		t.Error("the returned 503 must be retriable later")
+
+	got := withThinkingLevel(genOptionsWithURLContext(time.Second, 0), genai.ThinkingLevelLow)
+	if got.ThinkingConfig == nil || got.ThinkingConfig.ThinkingLevel != genai.ThinkingLevelLow {
+		t.Errorf("expected thinking level LOW, got %+v", got.ThinkingConfig)
+	}
+	if len(got.Tools) != 1 || got.Tools[0].URLContext == nil {
+		t.Errorf("the other options must be kept, got %+v", got.Tools)
+	}
+}
+
+// a summary with url context must fail when the url could not be retrieved
+func TestURLRetrievalError(t *testing.T) {
+	withStatuses := func(statuses ...genai.URLRetrievalStatus) *genai.Candidate {
+		c := &genai.Candidate{URLContextMetadata: &genai.URLContextMetadata{}}
+		for _, s := range statuses {
+			c.URLContextMetadata.URLMetadata = append(c.URLContextMetadata.URLMetadata, &genai.URLMetadata{
+				RetrievedURL:       "https://example.com",
+				URLRetrievalStatus: s,
+			})
+		}
+		return c
+	}
+
+	tests := []struct {
+		name      string
+		candidate *genai.Candidate
+		wantErr   bool
+	}{
+		{name: "retrieved", candidate: withStatuses(genai.URLRetrievalStatusSuccess)},
+		{name: "not retrieved", candidate: withStatuses(genai.URLRetrievalStatusError), wantErr: true},
+		{name: "one of them retrieved", candidate: withStatuses(genai.URLRetrievalStatusError, genai.URLRetrievalStatusSuccess)},
+		{name: "no url metadata", candidate: withStatuses()},
+		{name: "no url context metadata", candidate: &genai.Candidate{}},
+		{name: "nil"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := urlRetrievalError(tt.candidate); (err != nil) != tt.wantErr {
+				t.Errorf("urlRetrievalError() = %v, want error: %v", err, tt.wantErr)
+			}
+		})
 	}
 }
 

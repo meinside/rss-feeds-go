@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mmcdole/gofeed"
+	"google.golang.org/genai"
 )
 
 // helper for creating a client with API key from env
@@ -33,6 +33,11 @@ func newTestClientWithAPI(t *testing.T) *Client {
 	client.SetGoogleAIModels([]string{model})
 	client.SetDesiredLanguage("ko_KR")
 
+	// eg. 'LOW' (not sent when empty)
+	if level := os.Getenv("GEMINI_THINKING_LEVEL"); level != "" {
+		client.SetGoogleAIThinkingLevel(genai.ThinkingLevel(level))
+	}
+
 	return client
 }
 
@@ -40,7 +45,7 @@ func newTestClientWithAPI(t *testing.T) *Client {
 func TestSummarizeURLContent(t *testing.T) {
 	client := newTestClientWithAPI(t)
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), liveTestTimeout)
 	defer cancel()
 
 	_, translatedTitle, summarizedContent, err := client.summarize(
@@ -51,8 +56,8 @@ func TestSummarizeURLContent(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to summarize url content: %s", err)
 	} else {
-		log.Printf(">>> translated title: %s", translatedTitle)
-		log.Printf(">>> summarized content: %s", summarizedContent)
+		t.Logf("translated title: %s", translatedTitle)
+		t.Logf("summarized content: %s", summarizedContent)
 	}
 }
 
@@ -60,7 +65,7 @@ func TestSummarizeURLContent(t *testing.T) {
 func TestSummarizeURL(t *testing.T) {
 	client := newTestClientWithAPI(t)
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), liveTestTimeout)
 	defer cancel()
 
 	_, translatedTitle, summarizedContent, err := client.summarizeURL(
@@ -72,8 +77,8 @@ func TestSummarizeURL(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to summarize url: %s", err)
 	} else {
-		log.Printf(">>> [url context] translated title (untouched): %s", translatedTitle)
-		log.Printf(">>> [url context] summarized content: %s", summarizedContent)
+		t.Logf("translated title (untouched): %s", translatedTitle)
+		t.Logf("summarized content: %s", summarizedContent)
 	}
 }
 
@@ -81,7 +86,7 @@ func TestSummarizeURL(t *testing.T) {
 func TestSummarizeYouTube(t *testing.T) {
 	client := newTestClientWithAPI(t)
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), liveTestTimeout)
 	defer cancel()
 
 	_, translatedTitle, summarizedContent, err := client.summarize(
@@ -92,16 +97,16 @@ func TestSummarizeYouTube(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to summarize youtube url: %s", err)
 	} else {
-		log.Printf(">>> [youtube] translated title: %s", translatedTitle)
-		log.Printf(">>> [youtube] summarized content: %s", summarizedContent)
+		t.Logf("translated title: %s", translatedTitle)
+		t.Logf("summarized content: %s", summarizedContent)
 	}
 }
 
-// test summarize with wrong url (should succeed via gemini url context)
+// test summarize with wrong url (should fail and keep original title)
 func TestSummarizeWrongURL(t *testing.T) {
 	client := newTestClientWithAPI(t)
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), liveTestTimeout)
 	defer cancel()
 
 	_, translatedTitle, summarizedContent, err := client.summarize(
@@ -109,14 +114,14 @@ func TestSummarizeWrongURL(t *testing.T) {
 		`What is the answer to life, the universe, and everything?`,
 		`https://no-sucn-domain/that-will-lead/to/fetch-error`,
 	)
-	if err != nil {
-		t.Errorf("should have failed with the wrong url")
+	if err == nil {
+		t.Errorf("should have failed with the wrong url, but got: %s", summarizedContent)
 	} else {
 		if translatedTitle != `What is the answer to life, the universe, and everything?` {
 			t.Errorf("should have kept the title, but got '%s'", translatedTitle)
 		}
-		log.Printf(">>> [wrong url] translated title (untouched): %s", translatedTitle)
-		log.Printf(">>> [wrong url] summarized content (error message): %s", summarizedContent)
+		t.Logf("translated title (untouched): %s", translatedTitle)
+		t.Logf("summarized content (error message): %s", summarizedContent)
 	}
 }
 
@@ -131,7 +136,7 @@ func TestSummarizeWrongAPIKey(t *testing.T) {
 	client.SetGoogleAIModels([]string{defaultGoogleAIModel})
 	client.SetDesiredLanguage("ko_KR")
 
-	ctx, cancel := context.WithTimeout(context.TODO(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.TODO(), liveTestTimeout)
 	defer cancel()
 
 	_, translatedTitle, summarizedContent, err := client.summarize(
@@ -143,8 +148,8 @@ func TestSummarizeWrongAPIKey(t *testing.T) {
 		if translatedTitle != `What is the answer to life, the universe, and everything?` {
 			t.Errorf("should have kept the title, but got '%s'", translatedTitle)
 		}
-		log.Printf(">>> [api error] translated title (untouched): %s", translatedTitle)
-		log.Printf(">>> [api error] summarized content (api error): %s", summarizedContent)
+		t.Logf("translated title (untouched): %s", translatedTitle)
+		t.Logf("summarized content (api error): %s", summarizedContent)
 	} else {
 		t.Errorf("should have failed with the wrong api key")
 	}
@@ -202,29 +207,6 @@ func TestClientSetters(t *testing.T) {
 		t.Error("expected verbose to be true")
 	}
 	client.SetVerbose(false)
-}
-
-// test `pickAvailableCombo` round-robins over every (key, model) combo
-func TestPickAvailableComboCoversAllPairs(t *testing.T) {
-	client := NewClient([]string{"key-a", "key-b"}, nil)
-	client.SetGoogleAIModels([]string{"model-x", "model-y", "model-z"})
-
-	now := time.Unix(1_000_000, 0)
-
-	seen := map[keyModelCombo]bool{}
-	for i := 0; i < 6; i++ {
-		combo, _, ok := client.pickAvailableCombo(now, nil)
-		if !ok {
-			t.Fatalf("expected ok on iteration %d", i)
-		}
-		if seen[combo] {
-			t.Errorf("combo %+v seen twice within one full cycle", combo)
-		}
-		seen[combo] = true
-	}
-	if len(seen) != 6 {
-		t.Errorf("expected all 6 combos covered, got %d", len(seen))
-	}
 }
 
 // test `ListCachedItems` and `MarkCachedItemsAsRead`

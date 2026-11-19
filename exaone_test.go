@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -418,6 +417,60 @@ func TestExaoneOnlyClientRejectsGeminiOnlyTasks(t *testing.T) {
 	}
 }
 
+// with EXAONE api keys only, summarizing a youtube video (which only Gemini
+// can do) must fail without a request, keeping the title
+func TestSummarizeYouTubeWithExaoneOnly(t *testing.T) {
+	c := newExaoneTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("no exaone request is expected")
+	}, "exaone-key")
+
+	title := `I2C test on Raspberry Pi with Adafruit 8x8 LED Matrix and Ruby`
+	_, translatedTitle, summarizedContent, err := c.summarize(
+		context.Background(),
+		title,
+		`https://www.youtube.com/watch?v=fV5rI_5fDI8`,
+	)
+	if !errors.Is(err, ErrNoProviderForTask) {
+		t.Errorf("expected ErrNoProviderForTask, got %v", err)
+	}
+	if translatedTitle != title {
+		t.Errorf("should have kept the title, but got '%s'", translatedTitle)
+	}
+	if !isError(summarizedContent) {
+		t.Errorf("expected an error message as the summary, got %q", summarizedContent)
+	}
+}
+
+// with EXAONE api keys only, an unfetchable url (whose fallback with url context
+// only Gemini can do) must fail without a request, keeping the title
+func TestSummarizeUnfetchableURLWithExaoneOnly(t *testing.T) {
+	notFound := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(notFound.Close)
+
+	c := newExaoneTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("no exaone request is expected")
+	}, "exaone-key")
+
+	title := `What is the answer to life, the universe, and everything?`
+	_, translatedTitle, summarizedContent, err := c.summarize(
+		context.Background(),
+		title,
+		notFound.URL+"/that-will-lead/to/fetch-error",
+	)
+	if !errors.Is(err, ErrNoProviderForTask) {
+		t.Errorf("expected ErrNoProviderForTask, got %v", err)
+	}
+	if isRetriableLater(err) {
+		t.Errorf("should not be retriable later: %v", err)
+	}
+	if translatedTitle != title {
+		t.Errorf("should have kept the title, but got '%s'", translatedTitle)
+	}
+	if !isError(summarizedContent) {
+		t.Errorf("expected an error message as the summary, got %q", summarizedContent)
+	}
+}
+
 // with EXAONE api keys only, a PDF item must be cached with the error message
 // and the original content, as any other failed summary
 func TestSummarizeAndCacheFeedsCachesUnsupportedContentWithExaoneOnly(t *testing.T) {
@@ -602,40 +655,19 @@ func TestSummarizeAndCacheFeedsFailsOnLongRateLimit(t *testing.T) {
 // cached, for retrying later) without blocking the text items after it, which
 // EXAONE can summarize
 func TestSummarizeAndCacheFeedsSkipsGeminiOnlyItemInCooldown(t *testing.T) {
-	pdfServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/pdf")
-		_, _ = w.Write([]byte("%PDF-1.7"))
-	}))
-	defer pdfServer.Close()
-	htmlServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<html><body><p>article body</p></body></html>`))
-	}))
-	defer htmlServer.Close()
-
 	var calls atomic.Int32
-	exaoneServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, itemURL, _ := newMixedTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		writeExaoneResponse(w, http.StatusOK, exaoneToolCallResponse)
-	}))
-	defer exaoneServer.Close()
-
-	c := NewClient([]string{"gemini-key"}, nil)
-	c.SetGoogleAIModels([]string{"gemini-m1"})
-	c.SetExaoneAPIKeys([]string{"exaone-key"})
-	c.exaone.baseURL = exaoneServer.URL + "/v1"
-	c.exaone.requestInterval = 0
-	c.SetSummarizeIntervalSeconds(0)
+	})
 
 	// the gemini combo (built first) is in a short cooldown, so that no gemini api call is made
 	c.cooldownUntil[0] = time.Now().Add(10 * time.Minute)
 
-	items := []*gofeed.Item{
-		{GUID: "guid-pdf", Title: "A PDF", Link: pdfServer.URL, Links: []string{pdfServer.URL}, Description: "desc pdf"},
-		{GUID: "guid-html", Title: "An HTML", Link: htmlServer.URL, Links: []string{htmlServer.URL}, Description: "desc html"},
-	}
-
-	err := c.SummarizeAndCacheFeeds(context.Background(), []gofeed.Feed{{Items: items}})
+	err := c.SummarizeAndCacheFeeds(context.Background(), []gofeed.Feed{{Items: []*gofeed.Item{
+		testItem("guid-pdf", itemURL("/pdf")),
+		testItem("guid-html", itemURL("/html")),
+	}}})
 	if !errors.Is(err, ErrNoAvailableAPIKey) {
 		t.Errorf("expected ErrNoAvailableAPIKey of the skipped item in the chain, got %v", err)
 	}
@@ -734,10 +766,6 @@ func TestWaitForExaoneRequestSlotKeepsInterval(t *testing.T) {
 	}
 }
 
-// timeout of live EXAONE tests: a generation takes ~5-15s, and 5xx/429 are
-// retried in place
-const exaoneLiveTestTimeout = 3 * time.Minute
-
 // helper for creating a client with EXAONE API key (only) from env
 func newTestClientWithExaoneAPI(t *testing.T) *Client {
 	t.Helper()
@@ -753,7 +781,7 @@ func newTestClientWithExaoneAPI(t *testing.T) *Client {
 		client.SetExaoneModels([]string{model})
 	}
 	client.SetDesiredLanguage("Korean")
-	client.SetVerbose(true)
+	client.SetVerbose(testVerbose)
 
 	return client
 }
@@ -762,7 +790,7 @@ func newTestClientWithExaoneAPI(t *testing.T) *Client {
 func TestSummarizeURLContentWithExaone(t *testing.T) {
 	client := newTestClientWithExaoneAPI(t)
 
-	ctx, cancel := context.WithTimeout(context.TODO(), exaoneLiveTestTimeout)
+	ctx, cancel := context.WithTimeout(context.TODO(), liveTestTimeout)
 	defer cancel()
 
 	usedModel, translatedTitle, summarizedContent, err := client.summarize(
@@ -776,59 +804,10 @@ func TestSummarizeURLContentWithExaone(t *testing.T) {
 		if len(strings.TrimSpace(summarizedContent)) == 0 {
 			t.Error("summarized content is empty")
 		}
-		log.Printf(">>> [exaone] used model: %s", usedModel)
-		log.Printf(">>> [exaone] translated title: %s", translatedTitle)
-		log.Printf(">>> [exaone] summarized content: %s", summarizedContent)
+		t.Logf("used model: %s", usedModel)
+		t.Logf("translated title: %s", translatedTitle)
+		t.Logf("summarized content: %s", summarizedContent)
 	}
-}
-
-// test summarize youtube url with the EXAONE API only (should fail without a
-// request, as only Gemini can summarize videos)
-func TestSummarizeYouTubeWithExaone(t *testing.T) {
-	client := newTestClientWithExaoneAPI(t)
-
-	ctx, cancel := context.WithTimeout(context.TODO(), exaoneLiveTestTimeout)
-	defer cancel()
-
-	title := `I2C test on Raspberry Pi with Adafruit 8x8 LED Matrix and Ruby`
-	_, translatedTitle, summarizedContent, err := client.summarize(
-		ctx,
-		title,
-		`https://www.youtube.com/watch?v=fV5rI_5fDI8`,
-	)
-	if !errors.Is(err, ErrNoProviderForTask) {
-		t.Errorf("expected ErrNoProviderForTask, got %v", err)
-	}
-	if translatedTitle != title {
-		t.Errorf("should have kept the title, but got '%s'", translatedTitle)
-	}
-	log.Printf(">>> [exaone, youtube] summarized content (error message): %s", summarizedContent)
-}
-
-// test summarize with wrong url with the EXAONE API only (should fail, as the
-// fallback with url context is done by Gemini only)
-func TestSummarizeWrongURLWithExaone(t *testing.T) {
-	client := newTestClientWithExaoneAPI(t)
-
-	ctx, cancel := context.WithTimeout(context.TODO(), exaoneLiveTestTimeout)
-	defer cancel()
-
-	title := `What is the answer to life, the universe, and everything?`
-	_, translatedTitle, summarizedContent, err := client.summarize(
-		ctx,
-		title,
-		`https://no-sucn-domain/that-will-lead/to/fetch-error`,
-	)
-	if !errors.Is(err, ErrNoProviderForTask) {
-		t.Errorf("expected ErrNoProviderForTask, got %v", err)
-	}
-	if isRetriableLater(err) {
-		t.Errorf("should not be retriable later: %v", err)
-	}
-	if translatedTitle != title {
-		t.Errorf("should have kept the title, but got '%s'", translatedTitle)
-	}
-	log.Printf(">>> [exaone, wrong url] summarized content (error message): %s", summarizedContent)
 }
 
 // test summarize with wrong EXAONE API key (should fail and keep original title)
@@ -841,7 +820,7 @@ func TestSummarizeWrongAPIKeyWithExaone(t *testing.T) {
 	client.SetExaoneAPIKeys([]string{"intentionally-wrong-api-key"})
 	client.SetDesiredLanguage("Korean")
 
-	ctx, cancel := context.WithTimeout(context.TODO(), exaoneLiveTestTimeout)
+	ctx, cancel := context.WithTimeout(context.TODO(), liveTestTimeout)
 	defer cancel()
 
 	// NOTE: a fetchable url, so that the exaone api is actually requested
@@ -864,7 +843,7 @@ func TestSummarizeWrongAPIKeyWithExaone(t *testing.T) {
 	if translatedTitle != title {
 		t.Errorf("should have kept the title, but got '%s'", translatedTitle)
 	}
-	log.Printf(">>> [exaone, api error] summarized content (api error): %s", summarizedContent)
+	t.Logf("summarized content (api error): %s", summarizedContent)
 }
 
 // test summarize content with both Gemini and EXAONE API keys (needs both
@@ -881,11 +860,11 @@ func TestSummarizeURLContentWithGeminiAndExaone(t *testing.T) {
 		t.Skip("EXAONE_API_KEY not set")
 	}
 	client.SetExaoneAPIKeys([]string{exaoneAPIKey})
-	client.SetVerbose(true)
+	client.SetVerbose(testVerbose)
 
 	// NOTE: one call per combo, so that each provider gets its turn
 	for i := range len(client.combos) {
-		ctx, cancel := context.WithTimeout(context.TODO(), exaoneLiveTestTimeout)
+		ctx, cancel := context.WithTimeout(context.TODO(), liveTestTimeout)
 		usedModel, translatedTitle, summarizedContent, err := client.summarize(
 			ctx,
 			`meinside/rss-feeds-go: A go utility package for handling RSS feeds.`,
@@ -897,8 +876,8 @@ func TestSummarizeURLContentWithGeminiAndExaone(t *testing.T) {
 			t.Errorf("[%d] failed to summarize url content: %s", i, err)
 			continue
 		}
-		log.Printf(">>> [mixed %d] used model: %s", i, usedModel)
-		log.Printf(">>> [mixed %d] translated title: %s", i, translatedTitle)
-		log.Printf(">>> [mixed %d] summarized content: %s", i, summarizedContent)
+		t.Logf("[%d] used model: %s", i, usedModel)
+		t.Logf("[%d] translated title: %s", i, translatedTitle)
+		t.Logf("[%d] summarized content: %s", i, summarizedContent)
 	}
 }

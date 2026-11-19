@@ -2,21 +2,36 @@ package rf
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-// test `getContentType`
+// test `getContentType` (with a HEAD request)
 func TestGetContentType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodHead {
+			t.Errorf("expected a HEAD request, got %s", r.Method)
+		}
+		switch r.URL.Path {
+		case "/page":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		case "/image.jpg":
+			w.Header().Set("Content-Type", "image/jpeg")
+		}
+	}))
+	defer server.Close()
+
 	ctx := context.Background()
 
-	for url, contentType := range map[string]string{
-		"https://github.com/meinside": "text/html",
-		"https://raw.githubusercontent.com/meinside/meinside/main/res/profile/sloth.jpg": "image/jpeg",
+	for path, contentType := range map[string]string{
+		"/page":      "text/html",
+		"/image.jpg": "image/jpeg",
 	} {
-		typ, err := getContentType(ctx, url, false)
+		typ, err := getContentType(ctx, server.URL+path, false)
 		if err != nil {
-			t.Errorf("failed to get content type of '%s': %s", url, err)
+			t.Errorf("failed to get content type of '%s': %s", path, err)
 		}
 
 		if !strings.HasPrefix(typ, contentType) {

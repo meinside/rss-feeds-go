@@ -21,6 +21,7 @@ import (
 
 	"github.com/gorilla/feeds"
 	"github.com/mmcdole/gofeed"
+	"google.golang.org/genai"
 
 	gt "github.com/meinside/gemini-things-go"
 	ssg "github.com/meinside/simple-scrapper-go"
@@ -68,6 +69,9 @@ type Client struct {
 
 	googleAIAPIKeys []string
 	googleAIModels  []string
+	// googleAIThinkingLevel is sent with every Gemini request when not empty
+	// (see `SetGoogleAIThinkingLevel`)
+	googleAIThinkingLevel genai.ThinkingLevel
 
 	exaoneAPIKeys []string
 	exaoneModels  []string
@@ -179,6 +183,18 @@ func newClientWithCache(
 func (c *Client) SetGoogleAIModels(models []string) {
 	c.googleAIModels = models
 	c.buildCombos()
+}
+
+// SetGoogleAIThinkingLevel sets the thinking level of Gemini requests (eg.
+// `genai.ThinkingLevelLow`). An empty level (default) sends none, leaving it to
+// the model's default.
+//
+// NOTE: it is not set by default, as a model which does not support thinking
+// levels may reject the request (400). It does not help a model which is slow
+// for other reasons: eg. a model which took minutes even for a 'hi' timed out
+// with 'LOW' all the same.
+func (c *Client) SetGoogleAIThinkingLevel(level genai.ThinkingLevel) {
+	c.googleAIThinkingLevel = level
 }
 
 // SetExaoneAPIKeys sets the client's EXAONE API keys.
@@ -567,6 +583,10 @@ func formatCooldownEnd(t time.Time) string {
 // isRetriableLater reports whether the error means the remaining feed items
 // should be left untouched and retried in a later run, rather than cached with
 // an error message as their summary.
+//
+// NOTE: timeouts are not, on purpose: content which times out with every model
+// would be retried (and block the items after it) forever. They fail over to
+// other models in `withFailoverFor` instead.
 func isRetriableLater(err error) bool {
 	return isOverloaded(err) || // http 503 ('The model is overloaded.'), or http 5xx from EXAONE
 		isQuotaError(err) || // http 429 (quota exceeded)
@@ -577,6 +597,19 @@ func isRetriableLater(err error) bool {
 // another model might.
 func isOverloaded(err error) bool {
 	return gt.IsModelOverloaded(err) || isExaoneServerError(err)
+}
+
+// isTimeout reports whether the error is a timed out request, which another
+// model might serve in time.
+//
+// NOTE: the stringified form is checked too, in case a library flattened the
+// error chain.
+func isTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, context.DeadlineExceeded) ||
+		strings.Contains(err.Error(), context.DeadlineExceeded.Error())
 }
 
 // isQuotaError reports whether the error is an http 429 from the API.
