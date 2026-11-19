@@ -56,6 +56,7 @@ func main() {
 
   // (optional) configure client
   client.SetGoogleAIModels([]string{"gemini-3.8-flash"})
+  //client.SetGoogleAIThinkingLevel(genai.ThinkingLevelLow) // not sent by default
   client.SetExaoneAPIKeys([]string{"your-exaone-api-key"}) // round-robined with gemini for text contents
   //client.SetExaoneHTTPClient(&http.Client{Transport: ...}) // eg. for setting renewed api keys on requests
   client.SetDesiredLanguage("Korean")
@@ -97,3 +98,24 @@ func main() {
 ```
 
 Other sample applications are in the `./samples/` directory.
+
+## Test
+
+```bash
+# unit tests only (live API tests are skipped without the keys)
+$ env -u GEMINI_API_KEY -u EXAONE_API_KEY go test ./...
+
+# with live API tests, and their results
+$ GEMINI_API_KEY=xxxx EXAONE_API_KEY=yyyy go test -v ./...
+
+# with the package's log output (verbose messages, logged errors)
+$ VERBOSE=true go test -v ./...
+```
+
+Live API tests can be configured with environment variables:
+
+| Variable | Description |
+|---|---|
+| `GEMINI_MODEL` | Gemini model (default: the package's default model) |
+| `GEMINI_THINKING_LEVEL` | Gemini thinking level, eg. `LOW` (default: not sent) |
+| `EXAONE_MODEL` | EXAONE model (default: the package's default model) |
